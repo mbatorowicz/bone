@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bone"
+version = "0.2.0"
+description = "Nierówność → masa → kształt — symulacja emergencji społecznej"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+gpu = ["torch>=2.2"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+bone-sim = "bone.cli:main"
+bone-studio = "bone.api.studio:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
