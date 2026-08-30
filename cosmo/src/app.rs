@@ -6,7 +6,7 @@ use eframe::egui::{self, Color32, ColorImage, TextureHandle, TextureOptions};
 use egui::{RichText, Sense};
 
 use crate::cosmology::Cosmology;
-use crate::engine::{Engine, RunConfig};
+use crate::engine::{adaptive_dlna, Engine, RunConfig};
 
 pub struct CosmoApp {
     engine: Option<Engine>,
@@ -26,6 +26,7 @@ pub struct CosmoApp {
     ms_step: f64,
     status: String,
     error: String,
+    slow_hold: u32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,8 +40,8 @@ impl Preset {
     fn label(self) -> &'static str {
         match self {
             Self::Linear => "wzrost liniowy",
-            Self::Small => "Planck 32³",
-            Self::Medium => "Planck 48³",
+            Self::Small => "formacja struktur",
+            Self::Medium => "formacja 64³",
         }
     }
 
@@ -59,11 +60,11 @@ impl Default for CosmoApp {
             engine: None,
             running: false,
             preset: Preset::Small,
-            n_grid: 32,
-            box_size: 100.0,
-            dlna: 0.02,
+            n_grid: 48,
+            box_size: 32.0,
+            dlna: 0.0005,
             seed: 42,
-            speed: 4,
+            speed: 1,
             yaw: 0.7,
             pitch: 0.35,
             zoom: 1.0,
@@ -74,6 +75,7 @@ impl Default for CosmoApp {
             status: "Gotowy. Wybierz preset i uruchom — liczy karta / CPU tego komputera."
                 .into(),
             error: String::new(),
+            slow_hold: 0,
         }
     }
 }
@@ -83,7 +85,7 @@ impl CosmoApp {
         self.error.clear();
         let mut cfg = self.preset.config();
         cfg.n_grid = self.n_grid;
-        cfg.pm_grid = (self.n_grid * 2).min(96);
+        cfg.pm_grid = self.n_grid.min(64);
         cfg.box_size = self.box_size;
         cfg.dlna = self.dlna;
         cfg.seed = self.seed;
@@ -93,8 +95,9 @@ impl CosmoApp {
         })) {
             Ok(eng) => {
                 self.status = format!(
-                    "Start z={:.1}, N={}, pudło {} Mpc/h, Planck 2018",
+                    "Start z={:.1}  wiek={:.2} Gyr  N={}  próbka {} Mpc/h  przestrzeń otwarta",
                     eng.redshift(),
+                    eng.cosmology.age_gyr(eng.a),
                     eng.n(),
                     eng.box_size
                 );
@@ -116,18 +119,31 @@ impl CosmoApp {
             return;
         }
         eng.cfg.dlna = self.dlna;
-        let n = self.speed.max(1);
+        let n = if self.speed == 0 {
+            self.slow_hold += 1;
+            if self.slow_hold < 8 {
+                return;
+            }
+            self.slow_hold = 0;
+            1
+        } else {
+            self.slow_hold = 0;
+            self.speed
+        };
         let t0 = Instant::now();
         for _ in 0..n {
             eng.step();
         }
         self.ms_step = t0.elapsed().as_secs_f64() * 1000.0 / n as f64;
+        let z = eng.redshift();
         self.status = format!(
-            "z={:.3}  a={:.4}  krok={}  szybkość {}×  Δt={:.0} ms  LI={:+.2e}",
-            eng.redshift(),
+            "z={:.3}  wiek={:.2} Gyr  a={:.4}  krok={}  {}×  Δln a={:.4}  Δt={:.0} ms  LI={:+.2e}",
+            z,
+            eng.cosmology.age_gyr(eng.a),
             eng.a,
             eng.step,
             n,
+            adaptive_dlna(z, self.dlna),
             self.ms_step,
             eng.layzer_irvine()
         );
@@ -147,7 +163,7 @@ impl eframe::App for CosmoApp {
             .show(ctx, |ui| {
                 ui.add_space(8.0);
                 ui.label(RichText::new("BONE COSMO").size(22.0).strong());
-                ui.label("ΛCDM · Planck 2018 · Particle-Mesh");
+                ui.label("ΛCDM · Planck 2018 · PM izolowany (Hockney)");
                 ui.label(RichText::new("Model standardowy kosmologii").small().weak());
                 ui.separator();
 
@@ -168,13 +184,21 @@ impl eframe::App for CosmoApp {
                 ui.add_space(6.0);
                 ui.add(egui::Slider::new(&mut self.n_grid, 16..=64).text("siatka N³"));
                 ui.add(
-                    egui::Slider::new(&mut self.box_size, 50.0..=400.0).text("pudło [Mpc/h]"),
+                    egui::Slider::new(&mut self.box_size, 20.0..=400.0).text("próbka [Mpc/h]"),
                 );
-                ui.add(egui::Slider::new(&mut self.dlna, 0.005..=0.05).text("Δln a"));
+                ui.add(egui::Slider::new(&mut self.dlna, 0.0002..=0.01).text("Δln a"));
                 ui.add(
-                    egui::Slider::new(&mut self.speed, 1..=16)
+                    egui::Slider::new(&mut self.speed, 0..=16)
                         .text("szybkość")
                         .suffix("×"),
+                );
+                ui.label(
+                    RichText::new(
+                        "Przestrzeń otwarta — bez ścian i zawijania. Widok śledzi chmurę. \
+                         Tempo zależy od z: szybciej przy z>20, wolniej przy z<5. Zero na suwaku = jeszcze wolniej.",
+                    )
+                    .small()
+                    .weak(),
                 );
 
                 ui.horizontal(|ui| {
@@ -235,8 +259,8 @@ impl eframe::App for CosmoApp {
                 ui.add_space(8.0);
                 ui.label(
                     RichText::new(
-                        "Silnik na tym komputerze (PM + FFT). Widok: chmura na GPU przez wgpu. \
-                         Nie liczy w chmurze.",
+                        "Silnik na tym komputerze (izolowany PM + FFT, bez periodycznego pudła). \
+                         Widok śledzi chmurę. Nie liczy w chmurze.",
                     )
                     .small()
                     .weak(),
@@ -257,7 +281,7 @@ impl eframe::App for CosmoApp {
             }
             let scroll = ui.input(|i| i.raw_scroll_delta.y);
             if scroll != 0.0 {
-                self.zoom = (self.zoom * (1.0 - scroll * 0.001)).clamp(0.3, 4.0);
+                self.zoom = (self.zoom * (1.0 - scroll * 0.001)).clamp(0.15, 8.0);
             }
 
             let image = render_cloud(
@@ -298,46 +322,81 @@ fn render_cloud(
             &flatten(&pixels),
         );
     };
-    let l = eng.box_size;
+    let (center, span) = eng.cloud_center_span();
+    let half = (span * 0.5).max(1e-3);
     let cy = yaw.cos();
     let sy = yaw.sin();
     let cp = pitch.cos();
     let sp = pitch.sin();
-    let stride = (eng.n() / 80_000).max(1);
+    let stride = (eng.n() / 400_000).max(1);
     let scale = (w.min(h) as f32) * 0.42 * zoom;
     let cx = w as f32 * 0.5;
     let cy_pix = h as f32 * 0.5;
-    let mut zbuf = vec![f32::INFINITY; w * h];
+    let mut glow = vec![0.0f32; w * h];
 
     for (i, q) in eng.x.iter().enumerate().step_by(stride) {
-        let px = (q[0] / l - 0.5) * 2.0;
-        let py = (q[1] / l - 0.5) * 2.0;
-        let pz = (q[2] / l - 0.5) * 2.0;
+        let px = (q[0] - center[0]) / half;
+        let py = (q[1] - center[1]) / half;
+        let pz = (q[2] - center[2]) / half;
         let x1 = px * cy + pz * sy;
         let z1 = -px * sy + pz * cy;
         let y1 = py * cp - z1 * sp;
-        let z2 = py * sp + z1 * cp;
         let u = (cx + x1 * scale) as i32;
         let v = (cy_pix - y1 * scale) as i32;
         if u < 1 || v < 1 || u >= w as i32 - 1 || v >= h as i32 - 1 {
             continue;
         }
-        let idx = v as usize * w + u as usize;
-        if z2 >= zbuf[idx] {
+        let s = eng.shade(i);
+        let weight = 0.15 + 3.4 * s * s;
+        splat_glow(&mut glow, w, h, u, v, weight, s > 0.28);
+    }
+
+    for (idx, g) in glow.iter().enumerate() {
+        if *g <= 1e-6 {
             continue;
         }
-        zbuf[idx] = z2;
-        let s = eng.shade(i);
-        let r = (40.0 + 200.0 * s) as u8;
-        let g = (80.0 + 140.0 * s) as u8;
-        let b = (180.0 - 40.0 * s) as u8;
-        pixels[idx] = Color32::from_rgb(r, g, b);
-        if u + 1 < w as i32 {
-            pixels[idx + 1] = Color32::from_rgb(r / 2, g / 2, b / 2 + 20);
-        }
+        let t = (g * 0.22).asinh() / 2.4_f32.asinh();
+        pixels[idx] = heat_color(t);
     }
 
     ColorImage::from_rgba_unmultiplied([w, h], &flatten(&pixels))
+}
+
+fn splat_glow(glow: &mut [f32], w: usize, h: usize, u: i32, v: i32, weight: f32, wide: bool) {
+    let idx = v as usize * w + u as usize;
+    glow[idx] += weight;
+    if !wide {
+        return;
+    }
+    for (dx, dy, k) in [(-1, 0, 0.32), (1, 0, 0.32), (0, -1, 0.32), (0, 1, 0.32)] {
+        let x = u + dx;
+        let y = v + dy;
+        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+            glow[y as usize * w + x as usize] += weight * k;
+        }
+    }
+}
+
+fn heat_color(t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let (r, g, b) = if t < 0.28 {
+        let u = t / 0.28;
+        (6.0 + 22.0 * u, 8.0 + 36.0 * u, 14.0 + 78.0 * u)
+    } else if t < 0.58 {
+        let u = (t - 0.28) / 0.30;
+        (28.0 + 78.0 * u, 44.0 + 96.0 * u, 92.0 + 36.0 * u)
+    } else if t < 0.82 {
+        let u = (t - 0.58) / 0.24;
+        (106.0 + 122.0 * u, 140.0 + 36.0 * u, 128.0 - 68.0 * u)
+    } else {
+        let u = (t - 0.82) / 0.18;
+        (228.0 + 27.0 * u, 176.0 + 68.0 * u, 60.0 + 140.0 * u)
+    };
+    Color32::from_rgb(
+        r.round().clamp(0.0, 255.0) as u8,
+        g.round().clamp(0.0, 255.0) as u8,
+        b.round().clamp(0.0, 255.0) as u8,
+    )
 }
 
 fn flatten(px: &[Color32]) -> Vec<u8> {

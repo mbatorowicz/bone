@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bone Cosmo — symulacja ΛCDM na komputerze</title>
+    <title>Bone Cosmo — z gładkiej materii rośnie sieć</title>
     <meta
       name="description"
-      content="Bone Cosmo to aplikacja desktopowa na Windows. Liczy lokalnie model standardowy kosmologii (ΛCDM, Planck 2018) metodą Particle-Mesh."
+      content="Aplikacja na Windows. Liczy lokalnie model standardowy kosmologii (ΛCDM, Planck 2018): od prawie jednorodnej chmury do włókien, pustek i zagęszczeń."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -30,11 +30,11 @@
     <main class="wrap">
       <section class="hero">
         <p class="eyebrow">Aplikacja na Windows · liczy u Ciebie, nie w chmurze</p>
-        <h1>Małe okienko na duży wszechświat.</h1>
+        <h1>Z gładkiej materii rośnie sieć.</h1>
         <p class="lead">
-          Bone Cosmo pokazuje, jak z prawie gładkiej materii rosną włókna i pustki
-          — tak, jak przewiduje model standardowy kosmologii. To program na pulpit,
-          nie strona do liczenia w przeglądarce.
+          Bone Cosmo pokazuje historię materii w modelu standardowym kosmologii:
+          od prawie jednorodnej chmury do włókien, pustek i zagęszczeń.
+          To program na pulpit. Ta strona nic nie liczy — służy do opisu i pobrania.
         </p>
         <div class="actions">
           <a
@@ -62,29 +62,29 @@
         <article>
           <h2>Czym to jest</h2>
           <p>
-            Program składa chmurę cząstek w periodycznym pudle i puszcza czas do
-            przodu. Na ekranie widać, jak materia zsuwa się w sieć — ten sam obraz,
-            który astronomowie znają z wielkich przeglądów nieba, tylko w skali,
-            którą uniesie zwykły komputer.
+            Lokalna symulacja ΛCDM z parametrami satelity Planck z 2018 roku.
+            Program składa chmurę cząstek w periodycznym pudle i puszcza czas
+            od wczesnego wszechświata do dziś. Grawitację przybliża metodą
+            Particle-Mesh — tą samą rodziną algorytmów, której używa się
+            w dużych biegach kosmologicznych, tylko w skali zwykłego komputera.
           </p>
           <p>
-            Silnik działa lokalnie, na karcie graficznej albo procesorze. Ta strona
-            nic nie liczy; służy tylko do opisu i pobrania.
+            Silnik działa na karcie graficznej albo procesorze. Nic nie wychodzi
+            do chmury.
           </p>
         </article>
 
         <article>
-          <h2>Model standardowy</h2>
+          <h2>Co zobaczysz</h2>
           <p>
-            ΛCDM (czytaj: „lambda CDM”) to dziś podstawowy opis historii
-            wszechświata: zwykła materia, ciemna materia i ciemna energia, na
-            tle rozszerzającej się przestrzeni. Parametry bierzemy z satelity
-            Planck, pomiar z 2018 roku.
+            Na początku chmura jest prawie gładka — tak ma być. Potem materia
+            zsuwa się w sieć: najpierw słabe zagęszczenia, potem włókna i pustki.
+            Domyślny preset, <strong>formacja struktur</strong>, jest dobrany tak,
+            żeby ten wzrost dało się oglądać, a nie tylko przelatywać.
           </p>
           <p>
-            Grawitację przybliżamy metodą Particle-Mesh: masa ląduje na siatce,
-            potencjał wychodzi z szybkiej transformaty Fouriera. To ta sama rodzina
-            algorytmów, której używa się w dużych symulacjach kosmologicznych.
+            To szkielet materii, nie katalog galaktyk z gwiazdami. Ale to właśnie
+            ten szkielet, na którym galaktyki by siedziały.
           </p>
         </article>
 
@@ -92,7 +92,7 @@
           <h2>Wymagania</h2>
           <ul>
             <li>Windows 10 lub 11, wersja 64-bitowa</li>
-            <li>Kilka gigabajtów pamięci — większa siatka potrzebuje więcej RAM</li>
+            <li>Kilka gigabajtów pamięci — gęstsza siatka bierze więcej RAM</li>
             <li>Karta z DirectX&nbsp;12 albo Vulkan pomaga, ale nie jest konieczna</li>
             <li>Nie potrzebujesz Pythona, Rusta ani .NET</li>
           </ul>
@@ -106,7 +106,10 @@
               Po instalacji znajdź <strong>Bone Cosmo</strong> w menu Start.
               Wersję przenośną uruchamiasz podwójnym kliknięciem.
             </li>
-            <li>Wybierz preset — na początek wystarczy „Planck 32³” — i naciśnij Uruchom.</li>
+            <li>
+              Zostaw preset „formacja struktur” i naciśnij Uruchom.
+              Na początku prawie nic się nie dzieje — sieć wychodzi później.
+            </li>
             <li>Przeciągnij myszą, żeby obrócić chmurę. Kółko przybliża i oddala.</li>
           </ol>
         </article>

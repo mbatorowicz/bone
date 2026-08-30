@@ -183,6 +183,11 @@ code {
   color: var(--gold);
 }
 
+strong {
+  color: var(--gold);
+  font-weight: 600;
+}
+
 .foot {
   padding: 0 0 48px;
   color: var(--muted);

@@ -132,11 +132,7 @@ pub fn make_initial_state(
                     d * psi[i][1],
                     d * psi[i][2],
                 ];
-                x[i] = [
-                    (q[0] + disp[0]).rem_euclid(l),
-                    (q[1] + disp[1]).rem_euclid(l),
-                    (q[2] + disp[2]).rem_euclid(l),
-                ];
+                x[i] = [q[0] + disp[0], q[1] + disp[1], q[2] + disp[2]];
                 p[i] = [
                     p_scale * psi[i][0],
                     p_scale * psi[i][1],
@@ -233,14 +229,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ic_finite_and_wrapped() {
+    fn ic_finite_no_wrap() {
         let st = make_initial_state(Cosmology::planck18(), 100.0, 16, 49.0, 1);
         assert_eq!(st.x.len(), 16 * 16 * 16);
         assert!(st.mass > 0.0);
         let sum_p: f32 = st.p.iter().map(|p| p[0] + p[1] + p[2]).sum();
         assert!(sum_p.abs() < st.p.len() as f32 * 1e-2);
         for q in &st.x {
-            assert!(q[0] >= 0.0 && q[0] < st.box_size);
+            assert!(q[0].is_finite() && q[1].is_finite() && q[2].is_finite());
         }
     }
 }

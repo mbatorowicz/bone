@@ -17,26 +17,27 @@ pub struct RunConfig {
 }
 
 impl RunConfig {
+    /// Domyślny preset pod formację struktur: mniejsza próbka IC, gęstsza siatka.
     pub fn planck18_small() -> Self {
         Self {
-            box_size: 100.0,
-            n_grid: 32,
-            pm_grid: 64,
+            box_size: 32.0,
+            n_grid: 48,
+            pm_grid: 48,
             z_start: 49.0,
             z_end: 0.0,
-            dlna: 0.02,
+            dlna: 0.0005,
             seed: 42,
         }
     }
 
     pub fn planck18_64() -> Self {
         Self {
-            box_size: 100.0,
-            n_grid: 48,
+            box_size: 40.0,
+            n_grid: 64,
             pm_grid: 64,
             z_start: 49.0,
             z_end: 0.0,
-            dlna: 0.015,
+            dlna: 0.0004,
             seed: 42,
         }
     }
@@ -45,13 +46,26 @@ impl RunConfig {
         Self {
             box_size: 200.0,
             n_grid: 32,
-            pm_grid: 64,
+            pm_grid: 32,
             z_start: 49.0,
             z_end: 0.0,
-            dlna: 0.03,
+            dlna: 0.0008,
             seed: 7,
         }
     }
+}
+
+/// Mniejszy krok przy z<5 (nieliniowość), większy przy z>20 (era liniowa).
+pub fn adaptive_dlna(z: f64, base: f64) -> f64 {
+    let base = base.max(1e-6);
+    let scale = if z >= 20.0 {
+        1.5
+    } else if z <= 5.0 {
+        0.5
+    } else {
+        0.5 + (z - 5.0) / 15.0
+    };
+    (base * scale).clamp(0.00008, 0.05)
 }
 
 pub struct Engine {
@@ -76,10 +90,9 @@ impl Engine {
             make_initial_state(cosmo, cfg.box_size, cfg.n_grid, cfg.z_start, cfg.seed);
         let n = ic.x.len();
         let rho_bar = cosmo.mean_matter_density() as f32;
-        let mut pm = ParticleMesh::new(cfg.pm_grid, ic.box_size, rho_bar);
+        let mut pm = ParticleMesh::new(cfg.pm_grid, rho_bar);
         let mut acc = vec![[0.0; 3]; n];
-        pm.deposit(&ic.x, ic.mass);
-        pm.solve_forces();
+        pm.update(&ic.x, ic.mass);
         pm.gather(&ic.x, &mut acc);
         let mut eng = Self {
             cosmology: cosmo,
@@ -110,24 +123,40 @@ impl Engine {
         self.x.len()
     }
 
-    fn wrap(&mut self) {
-        let l = self.box_size;
-        for q in &mut self.x {
-            q[0] = q[0].rem_euclid(l);
-            q[1] = q[1].rem_euclid(l);
-            q[2] = q[2].rem_euclid(l);
+    pub fn cloud_center_span(&self) -> ([f32; 3], f32) {
+        let mut lo = [f32::MAX; 3];
+        let mut hi = [f32::MIN; 3];
+        for q in &self.x {
+            for d in 0..3 {
+                lo[d] = lo[d].min(q[d]);
+                hi[d] = hi[d].max(q[d]);
+            }
         }
+        if !lo[0].is_finite() {
+            return ([0.0; 3], 1.0);
+        }
+        let center = [
+            0.5 * (lo[0] + hi[0]),
+            0.5 * (lo[1] + hi[1]),
+            0.5 * (lo[2] + hi[2]),
+        ];
+        let span = (hi[0] - lo[0])
+            .max(hi[1] - lo[1])
+            .max(hi[2] - lo[2])
+            .max(1e-3);
+        (center, span)
     }
 
     fn refresh_forces(&mut self) {
-        self.pm.deposit(&self.x, self.mass);
-        self.pm.solve_forces();
+        self.pm.update(&self.x, self.mass);
         self.pm.gather(&self.x, &mut self.acc);
     }
 
     pub fn step(&mut self) {
         let a1 = self.a;
-        let a2 = a1 * self.cfg.dlna.max(1e-6).exp();
+        // Brak twardego stopu na z=0: a rośnie dalej (przyszłość).
+        let dlna = adaptive_dlna(self.redshift(), self.cfg.dlna);
+        let a2 = a1 * dlna.exp();
         let amid = (a1 * a2).sqrt();
 
         let k1 = self.cosmology.kick_factor(a1, amid) as f32;
@@ -143,7 +172,6 @@ impl Engine {
             self.x[i][1] += self.p[i][1] * dr;
             self.x[i][2] += self.p[i][2] * dr;
         }
-        self.wrap();
         self.refresh_forces();
 
         let k2 = self.cosmology.kick_factor(amid, a2) as f32;
@@ -190,7 +218,110 @@ impl Engine {
     }
 
     pub fn shade(&self, i: usize) -> f32 {
-        let d = self.pm.density_at(self.x[i]);
-        (0.5 + 0.15 * d).clamp(0.0, 1.0)
+        let delta = self.pm.density_at(self.x[i]);
+        // 1+δ: pustka ≈ 0, tło = 1, halo ≫ 1. log₁₀ unosi filamenty, nie zjada halo.
+        let contrast = (1.0 + delta).max(1e-4);
+        ((contrast.log10()) * 0.72 + 0.18).clamp(0.0, 1.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cosmology::Cosmology;
+
+    fn max_step_frac(a: &[[f32; 3]], b: &[[f32; 3]], span: f32) -> f32 {
+        let mut max_frac = 0.0f32;
+        for (p, q) in a.iter().zip(b.iter()) {
+            for d in 0..3 {
+                max_frac = max_frac.max((q[d] - p[d]).abs() / span);
+            }
+        }
+        max_frac
+    }
+
+    #[test]
+    fn structure_preset_fits_halos() {
+        let c = RunConfig::planck18_small();
+        assert!(c.box_size >= 25.0 && c.box_size <= 50.0);
+        assert!(c.n_grid >= 48);
+        assert!((0.0003..=0.0008).contains(&c.dlna));
+    }
+
+    #[test]
+    fn adaptive_slows_down_after_z5() {
+        let base = 0.005;
+        let hi = adaptive_dlna(30.0, base);
+        let mid = adaptive_dlna(12.0, base);
+        let lo = adaptive_dlna(2.0, base);
+        assert!(hi > mid && mid > lo);
+        assert!((hi - base * 1.5).abs() < 1e-12);
+        assert!((lo - base * 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn first_step_drift_is_small_fraction_of_box() {
+        let cfg = RunConfig {
+            box_size: 32.0,
+            n_grid: 16,
+            pm_grid: 16,
+            z_start: 49.0,
+            z_end: 0.0,
+            dlna: 0.0005,
+            seed: 1,
+        };
+        let mut eng = Engine::new(Cosmology::planck18(), cfg);
+        let x0 = eng.x.clone();
+        let span = eng.cloud_center_span().1;
+        eng.step();
+        let frac = max_step_frac(&x0, &eng.x, span);
+        assert!(frac < 0.05, "max drift frac={frac}");
+    }
+
+    #[test]
+    fn particles_are_not_wrapped() {
+        let cfg = RunConfig {
+            box_size: 32.0,
+            n_grid: 16,
+            pm_grid: 16,
+            z_start: 49.0,
+            z_end: 0.0,
+            dlna: 0.0005,
+            seed: 1,
+        };
+        let mut eng = Engine::new(Cosmology::planck18(), cfg);
+        let l = eng.box_size;
+        eng.x[0] = [-1.0, 0.0, 0.0];
+        eng.p[0] = [0.0, 0.0, 0.0];
+        eng.acc[0] = [0.0, 0.0, 0.0];
+        eng.step();
+        assert!(
+            eng.x[0][0] < 0.0,
+            "pozycja zawinięta do pudła: {} (L={l})",
+            eng.x[0][0]
+        );
+    }
+
+    #[test]
+    fn late_time_drift_stays_small_versus_cloud() {
+        let cfg = RunConfig {
+            box_size: 32.0,
+            n_grid: 16,
+            pm_grid: 16,
+            z_start: 49.0,
+            z_end: 0.0,
+            dlna: 0.04,
+            seed: 1,
+        };
+        let mut eng = Engine::new(Cosmology::planck18(), cfg);
+        let mut max_frac = 0.0f32;
+        for _ in 0..40 {
+            let x0 = eng.x.clone();
+            let span = eng.cloud_center_span().1;
+            eng.step();
+            max_frac = max_frac.max(max_step_frac(&x0, &eng.x, span));
+        }
+        assert!(eng.redshift() < 20.0, "z={}", eng.redshift());
+        assert!(max_frac < 0.15, "max drift frac={max_frac}");
     }
 }
