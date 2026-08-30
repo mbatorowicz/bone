@@ -31,6 +31,22 @@ def _overrides(args: argparse.Namespace) -> dict:
         "gravity": "G",
         "light_speed": "c",
         "check_every": "error_check_every",
+        # warunek początkowy: bez tych przełączników każde odejście od presetu
+        # wymagało pisania własnego skryptu, mimo że pola w configu istnieją
+        "radius": "radius",
+        "mass": "total_mass",
+        "rotation": "rotation",
+        "temperature": "temperature",
+        "thickness": "thickness",
+        "flatten": "flatten",
+        "virial": "virial",
+        "accuracy": "accuracy",
+        "dt_max": "dt_max",
+        "frame_every": "trajectory_every",
+        "cooling": "cooling_rate",
+        "cooling_power": "cooling_density_power",
+        "cooling_floor": "cooling_floor",
+        "cooling_grid": "cooling_grid",
     }
     return {
         key: getattr(args, name)
@@ -60,6 +76,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         if "force_err_rms" in row:
             line += f"  błąd_siły={row['force_err_rms']:.2%}"
+        if row.get("E_cooled", 0.0) > 0.0:
+            line += f"  wypromieniowane={row['E_cooled'] / abs(row['E_tot']):.1%}"
         print(line, flush=True)
         hint = engine.accuracy_hint()
         if hint and hint != on_diagnostics.last_hint:
@@ -156,6 +174,24 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--gravity", type=float, help="stała G")
     run.add_argument("--light-speed", type=float, dest="light_speed", help="prędkość światła c")
     run.add_argument("--check-every", type=int, dest="check_every", help="pomiar błędu co N kroków")
+    run.add_argument("--radius", type=float, help="promień startowy")
+    run.add_argument("--mass", type=float, help="masa całego układu")
+    run.add_argument("--rotation", type=float, help="ułamek prędkości okrężnej")
+    run.add_argument("--temperature", type=float, help="dyspersja prędkości jako ułamek c")
+    run.add_argument("--thickness", type=float, help="grubość przekroju (dysk, torus, włókno)")
+    run.add_argument("--flatten", type=float, help="spłaszczenie osi z (1 = bez zmiany)")
+    run.add_argument("--virial", type=float,
+                     help="docelowe 2K/|U| na starcie; 0 = użyj --temperature")
+    run.add_argument("--accuracy", type=float, help="dokładność kroku η")
+    run.add_argument("--dt-max", type=float, dest="dt_max", help="górny limit kroku")
+    run.add_argument("--frame-every", type=int, dest="frame_every", help="zapis klatki co N kroków")
+    run.add_argument("--cooling", type=float, help="tempo chłodzenia λ (0 = brak dyssypacji)")
+    run.add_argument("--cooling-power", type=float, dest="cooling_power",
+                     help="wykładnik zależności chłodzenia od gęstości")
+    run.add_argument("--cooling-floor", type=float, dest="cooling_floor",
+                     help="podłoga dyspersji jako ułamek c")
+    run.add_argument("--cooling-grid", type=int, dest="cooling_grid",
+                     help="bok siatki mierzącej lokalny przepływ")
     run.add_argument("--no-frames", action="store_true", help="nie zapisuj trajektorii")
     run.set_defaults(func=cmd_run)
 

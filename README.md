@@ -59,7 +59,46 @@ python -m bone run --preset galaxy --steps 2000          # bieg bez okna
 python -m bone bench --sizes 4000 100000 --backends exact mesh
 ```
 
-Presety: `galaxy`, `collapse`, `relativistic`, `merger`, `precision`.
+Presety: `galaxy`, `collapse`, `relativistic`, `merger`, `fragmentation`,
+`dissipation`, `precision` oraz porównawcze presety kształtu `shape_cube`,
+`shape_cylinder`, `shape_torus`, `shape_slab`.
+
+## Kształty startowe
+
+Dziesięć rozkładów: `ball`, `cube`, `cylinder`, `disk`, `torus`, `sphere_shell`,
+`filament`, `gaussian`, `two_clumps`, `plummer`. Proporcje ustawiają dwa pokrętła:
+
+- **`thickness`** — przekrój poprzeczny, dla kształtów, które go mają (dysk, torus,
+  włókno). To on, a nie promień, wyznacza długość fali fragmentacji (λ ≈ 3,6·σ).
+- **`flatten`** — mnożnik osi z, działa na **każdy** kształt. Kula robi się plackiem
+  albo cygarem, kostka płytą albo słupem. Rozmiar (`radius`) jest przez to
+  oddzielony od proporcji, więc zmiana kształtu nie zmienia przy okazji skali.
+
+```bash
+python scripts/plot_shapes.py                    # katalog wszystkich kształtów
+python scripts/plot_shapes.py --axis xy          # rzut z góry
+python scripts/plot_shapes.py --flatten 0.25     # te same, spłaszczone
+```
+
+### Dlaczego warunek startowy zadaje się wiriałem, a nie temperaturą
+
+Ta sama dyspersja prędkości **nie jest porównywalna między kształtami**. Zmierzone
+2K/|U| przy identycznej masie, promieniu, G i dyspersji:
+
+| kształt | kostka | powłoka | walec | kula | chmura | torus | dysk | Plummer | włókno | dwie gromady |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2K/\|U\| | 1,33 | 1,27 | 1,21 | 1,03 | 0,90 | 0,93 | 0,88 | 0,70 | 0,63 | 0,57 |
+
+Rozrzut jest 2,3-krotny, a granica stabilności leży w środku tego przedziału.
+Bieg z ustaloną temperaturą miesza więc wpływ geometrii z wpływem tego, jak
+daleko od równowagi kształt wystartował — i nie pozwala rozstrzygnąć, co
+spowodowało wynik.
+
+Dlatego istnieje parametr **`virial`**: podaje się docelowe 2K/|U|, a dyspersja
+jest dobierana do energii potencjalnej *tego* kształtu (bisekcja po
+relatywistycznej energii kinetycznej, |U| z podpróbki 3000 cząstek liczonej
+dokładnym O(m²)). Trafia w cel z błędem poniżej 1% dla wszystkich dziesięciu
+kształtów. `virial = 0` oddaje kontrolę suwakowi temperatury.
 
 ## Dwa backendy sił
 

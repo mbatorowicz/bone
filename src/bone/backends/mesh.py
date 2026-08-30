@@ -26,74 +26,14 @@ Do pomiarów energii służy backend `exact`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 
 from bone.backends.base import Backend, Field
+from bone.grid import Box, cic_weights, fit_box
 
 #: ile pustych komórek zostawić między chmurą a ścianą pudła; szablon różnicowy
 #: czwartego rzędu sięga dwóch komórek, a przy ścianie zawija się przez FFT
 _EDGE_CELLS = 3
-
-
-@dataclass(frozen=True)
-class _Box:
-    origin: np.ndarray  # (3,) lewy dolny róg siatki
-    h: float  # rozmiar oczka (izotropowy)
-    ng: int  # bok siatki mas
-
-    def contains(self, positions: np.ndarray) -> bool:
-        local = (positions - self.origin) / self.h
-        return bool(
-            local.min() >= _EDGE_CELLS - 0.5
-            and local.max() <= self.ng - _EDGE_CELLS - 0.5
-        )
-
-
-def _fit_box(positions: np.ndarray, ng: int, margin: float) -> _Box:
-    lo = positions.min(axis=0)
-    hi = positions.max(axis=0)
-    center = 0.5 * (lo + hi)
-    span = float((hi - lo).max())
-    if not np.isfinite(span) or span <= 0.0:
-        span = 1.0
-    usable = ng - 2 * _EDGE_CELLS
-    h = span * (1.0 + max(margin, 0.0)) / max(usable, 1)
-    origin = center - 0.5 * ng * h
-    return _Box(origin=np.asarray(origin, dtype=np.float64), h=float(h), ng=int(ng))
-
-
-def _cic(positions: np.ndarray, box: _Box) -> tuple[np.ndarray, np.ndarray]:
-    """Wagi cloud-in-cell: dla każdej cząstki 8 węzłów i 8 wag sumujących się do 1.
-
-    Te same wagi służą do rozłożenia masy i do odczytu siły. Symetria deposit ↔
-    gather jest tym, co utrzymuje zachowanie pędu w PM.
-    """
-    ng = box.ng
-    local = (positions - box.origin) / box.h - 0.5
-    base = np.floor(local)
-    frac = local - base
-    base = base.astype(np.int64)
-    np.clip(base, 0, ng - 2, out=base)
-
-    n = positions.shape[0]
-    idx = np.empty((n, 8), dtype=np.int64)
-    wgt = np.empty((n, 8), dtype=np.float64)
-    corner = 0
-    for dx in (0, 1):
-        wx = frac[:, 0] if dx else 1.0 - frac[:, 0]
-        ix = base[:, 0] + dx
-        for dy in (0, 1):
-            wy = frac[:, 1] if dy else 1.0 - frac[:, 1]
-            iy = base[:, 1] + dy
-            for dz in (0, 1):
-                wz = frac[:, 2] if dz else 1.0 - frac[:, 2]
-                iz = base[:, 2] + dz
-                idx[:, corner] = (ix * ng + iy) * ng + iz
-                wgt[:, corner] = wx * wy * wz
-                corner += 1
-    return idx, wgt
 
 
 def _self_kernel(h: float, G: float, softening: float) -> np.ndarray:
@@ -186,7 +126,7 @@ class MeshBackend(Backend):
             self._torch = torch
             self._device = torch.device("cuda")
             self._tdtype = torch.float32 if dtype == "float32" else torch.float64
-        self._box: _Box | None = None
+        self._box: Box | None = None
         self._kernel_ft = None
         self._kernel_key: tuple | None = None
         self._last_softening: float | None = None
@@ -214,8 +154,8 @@ class MeshBackend(Backend):
 
     # ------------------------------------------------------------------ box
 
-    def _ensure_box(self, positions: np.ndarray) -> _Box:
-        needed = _fit_box(positions, self.grid, self.margin)
+    def _ensure_box(self, positions: np.ndarray) -> Box:
+        needed = fit_box(positions, self.grid, self.margin, edge=_EDGE_CELLS)
         box = self._box
         too_coarse = box is not None and box.h > 1.8 * needed.h
         if box is None or too_coarse or not box.contains(positions):
@@ -223,7 +163,7 @@ class MeshBackend(Backend):
             self.refits += 1
         return self._box
 
-    def _ensure_kernel(self, box: _Box, G: float, softening: float):
+    def _ensure_kernel(self, box: Box, G: float, softening: float):
         key = (2 * box.ng, round(box.h, 12), round(G, 12), round(softening, 12))
         if self._kernel_key == key and self._kernel_ft is not None:
             return self._kernel_ft
@@ -263,7 +203,7 @@ class MeshBackend(Backend):
         self._last_softening = eps
 
         kernel_ft = self._ensure_kernel(box, G, eps)
-        idx, wgt = _cic(positions, box)
+        idx, wgt = cic_weights(positions, box)
         if self._torch is not None:
             return self._compute_torch(positions, masses, idx, wgt, box, kernel_ft, eps, G)
         return self._compute_numpy(positions, masses, idx, wgt, box, kernel_ft, eps, G)

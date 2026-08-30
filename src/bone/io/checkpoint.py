@@ -37,15 +37,24 @@ def save(state: State, cfg: Config, out_dir: str | Path) -> Path:
     return path
 
 
+def load_config(out_dir: str | Path) -> Config | None:
+    """Sama konfiguracja zapisanego biegu, bez wczytywania stanu.
+
+    Rozdzielone od ``load``, bo wznawianie musi znać konfigurację ZANIM zapadnie
+    decyzja o starcie, a stan czytany jest później i w innym wątku. Ładowanie
+    kilku megabajtów tablic tylko po to, żeby zajrzeć w parametry, byłoby
+    marnotrawstwem.
+    """
+    path = Path(out_dir) / CONFIG
+    if not path.exists():
+        return None
+    return Config.from_flat(json.loads(path.read_text(encoding="utf-8")))
+
+
 def load(out_dir: str | Path) -> tuple[State, Config]:
     out = Path(out_dir)
     data = np.load(out / CHECKPOINT, allow_pickle=False)
-    cfg_path = out / CONFIG
-    cfg = (
-        Config.from_flat(json.loads(cfg_path.read_text(encoding="utf-8")))
-        if cfg_path.exists()
-        else Config()
-    )
+    cfg = load_config(out) or Config()
     state = State(
         positions=data["positions"],
         momenta=data["momenta"],

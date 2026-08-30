@@ -5,12 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bone"
 version = "1.0.0"
-description = "Grawitacja N-ciał z kinematyką szczególnej teorii względności — otwarta przestrzeń, wszystkie pary, mierzony błąd"
+description = "Kosmologiczna symulacja N-ciał ΛCDM — periodyczne pudło, solver PM, warunki początkowe 2LPT, mierzony błąd"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+keywords = [
+  "cosmology",
+  "n-body",
+  "lambda-cdm",
+  "particle-mesh",
+  "large-scale-structure",
+  "initial-conditions",
+  "power-spectrum",
+]
 dependencies = [
   "numpy>=1.26",
+  "scipy>=1.11",
 ]
 
 [project.optional-dependencies]

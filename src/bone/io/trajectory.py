@@ -9,6 +9,7 @@ z długością nagrania.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -20,12 +21,29 @@ META = "trajectory.json"
 
 
 class TrajectoryWriter:
-    def __init__(self, out_dir: str | Path, chunk_size: int = 64, stride: int = 1) -> None:
+    """Zapis klatek w paczkach, z indeksem pozwalającym czytać po jednej.
+
+    Paczka schodzi na dysk, gdy się zapełni ALBO gdy od poprzedniego zapisu
+    minęło `flush_interval`. Sam warunek zapełnienia nie wystarczał: przy paczce
+    64 klatek i zapisie co 20 kroków pierwszy indeks pojawiał się po 1280
+    krokach, a do tego czasu odtwarzacz widział zero klatek i wyglądał na
+    zepsuty. Odczyt jest indeksowany, więc drobniejsze paczki nic nie kosztują.
+    """
+
+    def __init__(
+        self,
+        out_dir: str | Path,
+        chunk_size: int = 64,
+        stride: int = 1,
+        flush_interval: float = 2.0,
+    ) -> None:
         self.out = Path(out_dir)
         self.frames_dir = self.out / "frames"
         self.frames_dir.mkdir(parents=True, exist_ok=True)
         self.chunk_size = max(1, chunk_size)
         self.stride = max(1, stride)
+        self.flush_interval = max(0.0, flush_interval)
+        self._last_flush = time.monotonic()
         self._positions: list[np.ndarray] = []
         self._shades: list[np.ndarray] = []
         self._times: list[float] = []
@@ -45,12 +63,14 @@ class TrajectoryWriter:
         self._positions.append(positions)
         self._shades.append(shade)
         self._times.append(float(state.time))
-        if len(self._positions) >= self.chunk_size:
+        stale = time.monotonic() - self._last_flush >= self.flush_interval
+        if len(self._positions) >= self.chunk_size or stale:
             self.flush()
 
     def flush(self) -> None:
         if not self._positions:
             return
+        self._last_flush = time.monotonic()
         np.savez_compressed(
             self.frames_dir / f"chunk_{self._chunk:05d}.npz",
             positions=np.stack(self._positions),

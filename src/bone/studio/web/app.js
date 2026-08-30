@@ -15,6 +15,9 @@ const state = {
   fitted: false,
   inFlight: false,
   drift: [],
+  running: false,
+  busy: false,
+  presetId: null,
 };
 
 /* ------------------------------------------------------------------ scena */
@@ -195,35 +198,92 @@ function paintDiagnostics(d) {
   paintSpark();
 }
 
+/* Telemetria poprzedniego biegu musi zniknąć w chwili startu nowego. Plakietka
+   błędu siły jest tu najważniejsza: serwer podaje ją tylko w tych rzadkich
+   odczytach, w których faktycznie zmierzył błąd, więc gdyby jej nie czyścić,
+   wisiałaby na ekranie z liczbą z układu, którego już nie ma. */
+function resetHud() {
+  for (const id of ["mGamma", "mGammaMax", "mBeta", "mDt", "mVirial", "mRhalf", "mEdrift", "mLdrift", "mPres"]) {
+    el(id).textContent = "—";
+  }
+  el("mEdrift").classList.remove("warn", "bad");
+  el("mTime").textContent = "t = 0";
+  el("mStep").textContent = "krok 0";
+  el("mErr").hidden = true;
+  state.drift = [];
+  paintSpark();
+}
+
 /* --------------------------------------------------------------- panel UI */
 
 let applyTimer = null;
 function scheduleApply() {
   clearTimeout(applyTimer);
-  applyTimer = setTimeout(() => {
-    post("/api/apply", { params: state.params });
+  applyTimer = setTimeout(async () => {
+    try {
+      const answer = await post("/api/apply", { params: state.params });
+      if (answer.error) notify(answer.error, true);
+    } catch (e) {
+      notify("Nie udało się przesłać zmiany do serwera.", true);
+    }
   }, 140);
 }
 
-function buildChoice(key, spec) {
+const LIVE_TITLE = "Działa w trakcie symulacji";
+const STARTUP_TITLE = "Wymaga ponownego uruchomienia";
+
+function buildHint(text) {
+  if (!text) return null;
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = text;
+  return hint;
+}
+
+/* Kontrolki potrafią się odświeżyć z `state.params`, bo wczytanie presetu
+   podmienia cały zestaw parametrów i panel musi natychmiast pokazać, co
+   naprawdę pojedzie. */
+const setters = new Map();
+
+/* Wartość wyświetlana pochodzi z parametru, nie z pozycji suwaka. Presety liczą
+   G z zadanej prędkości na brzegu, więc wychodzą liczby w rodzaju 0,140625,
+   których siatka kroku suwaka nie potrafi trafić. Suwak jest wtedy przybliżonym
+   wskaźnikiem, a autorytetem jest ta etykieta i `state.params`. */
+const show = (v) => (typeof v === "number" ? String(Number(v.toPrecision(6))) : String(v));
+
+function buildChoice(control) {
   const wrap = document.createElement("div");
-  wrap.className = "choice";
-  const label = document.createElement("label");
-  label.textContent = spec.label;
+  wrap.className = "field choice" + (control.live ? "" : " startup");
+
+  const top = document.createElement("div");
+  top.className = "top";
+  const name = document.createElement("span");
+  name.textContent = control.label;
+  top.appendChild(name);
+
   const select = document.createElement("select");
-  for (const option of spec.options) {
+  select.title = control.live ? LIVE_TITLE : STARTUP_TITLE;
+  for (const option of control.options) {
     const node = document.createElement("option");
-    node.value = option;
-    node.textContent = option;
-    if (state.params[key] === option) node.selected = true;
+    node.value = option.value;
+    node.textContent = option.label;
     select.appendChild(node);
   }
-  select.addEventListener("change", () => { state.params[key] = select.value; });
-  wrap.append(label, select);
+  select.value = state.params[control.key];
+  select.addEventListener("change", () => {
+    state.params[control.key] = select.value;
+    clearPresetMark();
+    if (control.live) scheduleApply();
+  });
+  setters.set(control.key, (v) => { select.value = v; });
+
+  wrap.append(top, select);
+  const hint = buildHint(control.hint);
+  if (hint) wrap.appendChild(hint);
   return wrap;
 }
 
-function buildField(control) {
+function buildSlider(control) {
   const wrap = document.createElement("div");
   wrap.className = "field" + (control.live ? "" : " startup");
 
@@ -232,7 +292,6 @@ function buildField(control) {
   const name = document.createElement("span");
   name.textContent = control.label;
   const value = document.createElement("b");
-  value.textContent = String(control.value);
   top.append(name, value);
 
   const slider = document.createElement("input");
@@ -240,41 +299,88 @@ function buildField(control) {
   slider.min = control.min;
   slider.max = control.max;
   slider.step = control.step;
-  slider.value = control.value;
-  slider.title = control.live
-    ? "Działa w trakcie symulacji"
-    : "Wymaga ponownego uruchomienia";
+  slider.title = control.live ? LIVE_TITLE : STARTUP_TITLE;
 
   slider.addEventListener("input", () => {
-    const v = Number(slider.value);
-    state.params[control.key] = v;
-    value.textContent = slider.value;
+    state.params[control.key] = Number(slider.value);
+    value.textContent = show(Number(slider.value));
+    clearPresetMark();
     if (control.live) scheduleApply();
   });
+  setters.set(control.key, (v) => {
+    slider.value = v;
+    value.textContent = show(v);
+  });
+  setters.get(control.key)(state.params[control.key]);
 
   wrap.append(top, slider);
+  const hint = buildHint(control.hint);
+  if (hint) wrap.appendChild(hint);
   return wrap;
+}
+
+/* Rodzaj kontrolki podaje schemat z config.py, nie ten plik. Dzięki temu dodanie
+   pola do konfiguracji nie wymaga tknięcia frontendu. */
+function buildControl(control) {
+  return control.kind === "choice" ? buildChoice(control) : buildSlider(control);
+}
+
+function syncControls() {
+  for (const [key, apply] of setters) {
+    if (key in state.params) apply(state.params[key]);
+  }
+}
+
+/* Podświetlony chip znaczy „ten preset stoi w panelu". Każda ręczna zmiana
+   pokrętła to unieważnia, bo panel przestaje odpowiadać presetowi — inaczej
+   interfejs twierdziłby, że pojedzie coś, co już zostało nadpisane. */
+function markPreset(id) {
+  state.presetId = id;
+  for (const chip of el("presets").children) {
+    chip.classList.toggle("on", chip.dataset.preset === id);
+  }
+}
+
+function clearPresetMark() {
+  if (state.presetId !== null) markPreset(null);
+}
+
+async function loadPreset(entry) {
+  // Start idzie samym identyfikatorem. Pobieranie konfiguracji było tu
+  // warunkiem wstępnym — a działający proces studia często jest starszy niż
+  // frontend, nie zna /api/preset i nie wkłada configu do schematu. Chip
+  // kończył wtedy na „Nie udało się pobrać presetu" i nie wysyłał startu.
+  //
+  // Params panelu NIE jadą z tym żądaniem: stary serwer nakładał je na preset
+  // i wymazywał go do wartości domyślnych. Nowy serwer i tak bierze preset
+  // jako źródło prawdy. Panel dopina się z odpowiedzi po starcie.
+  if (entry.config) {
+    state.params = { ...entry.config };
+    syncControls();
+  }
+  markPreset(entry.id);
+  await run({ preset: entry.id, restart: state.running });
 }
 
 function buildPanel(schema) {
   state.params = { ...schema.defaults };
-
-  const choices = el("choices");
-  choices.innerHTML = "";
-  for (const [key, spec] of Object.entries(schema.choices)) {
-    choices.appendChild(buildChoice(key, spec));
-  }
+  setters.clear();
 
   const root = el("controls");
   root.innerHTML = "";
+  const open = schema.open_sections ?? 2;
   schema.groups.forEach((group, i) => {
+    if (!group.controls.length) return;
     const box = document.createElement("details");
     box.className = "group";
-    box.open = i < 2;
+    box.open = i < open;
     const head = document.createElement("summary");
     head.textContent = group.label;
+    const count = document.createElement("em");
+    count.textContent = group.controls.length;
+    head.appendChild(count);
     box.appendChild(head);
-    for (const control of group.controls) box.appendChild(buildField(control));
+    for (const control of group.controls) box.appendChild(buildControl(control));
     root.appendChild(box);
   });
 
@@ -283,11 +389,9 @@ function buildPanel(schema) {
   for (const p of schema.presets) {
     const button = document.createElement("button");
     button.textContent = p.label;
-    button.addEventListener("click", () => {
-      [...chips.children].forEach((c) => c.classList.remove("on"));
-      button.classList.add("on");
-      start({ preset: p.id });
-    });
+    button.dataset.preset = p.id;
+    button.title = "Wczytaj konfigurację i uruchom";
+    button.addEventListener("click", () => loadPreset(p));
     chips.appendChild(button);
   }
 }
@@ -308,18 +412,94 @@ async function post(path, body) {
   return response.json();
 }
 
-async function start(extra) {
-  state.fitted = false;
-  state.cameraTouched = false;
-  state.drift = [];
-  const answer = await post("/api/start", { params: state.params, ...extra });
-  if (answer.error) setStatus(answer.error, true);
-}
+/* ------------------------------------------------------- akcje i ich echo */
 
-function setStatus(text, bad) {
+/* Odpowiedź na kliknięcie musi przeżyć dłużej niż jeden obrót odpytywania.
+   Status jest odświeżany trzy razy na sekundę telemetrią biegu, więc komunikat
+   wpisany wprost znikał zanim dało się go przeczytać — a to właśnie tam trafiał
+   powód, dla którego klik nie dał efektu. */
+const NOTICE_MS = 4000;
+let noticeUntil = 0;
+
+function notify(text, bad = false) {
+  noticeUntil = performance.now() + NOTICE_MS;
   const node = el("status");
   node.textContent = text;
   node.classList.toggle("bad", Boolean(bad));
+  node.classList.toggle("notice", !bad);
+}
+
+function setStatus(text, bad) {
+  if (performance.now() < noticeUntil) return;
+  const node = el("status");
+  node.textContent = text;
+  node.classList.toggle("bad", Boolean(bad));
+  node.classList.remove("notice");
+}
+
+function syncButtons() {
+  const restart = state.running;
+  el("btnStart").textContent = restart ? "Restart" : "Uruchom";
+  el("btnStart").title = restart
+    ? "Zatrzymuje bieżący bieg i startuje z konfiguracją z panelu"
+    : "Startuje bieg z konfiguracją z panelu";
+  el("btnStart").disabled = state.busy;
+  el("btnResume").disabled = state.busy || state.running;
+  el("btnStop").disabled = state.busy || !state.running;
+
+  const noFrames = state.frameCount === 0;
+  el("btnPlay").disabled = noFrames;
+  el("scrub").disabled = noFrames;
+}
+
+async function run(extra) {
+  if (state.busy) return;
+  state.busy = true;
+  syncButtons();
+  notify(extra.restart ? "Restart biegu…" : "Uruchamianie…");
+  try {
+    const answer = await post("/api/start", extra.preset
+      ? { preset: extra.preset, restart: Boolean(extra.restart) }
+      : { params: state.params, ...extra });
+    if (answer.error) {
+      // odmowa znaczy, że poprzedni bieg trwa dalej — jego telemetria zostaje
+      notify(answer.error, true);
+    } else {
+      // serwer potwierdził start, więc przyciski nie muszą czekać na odpytanie
+      state.running = true;
+      state.fitted = false;
+      state.cameraTouched = false;
+      resetHud();
+      // Panel staje się odbiciem konfiguracji, którą serwer naprawdę przyjął.
+      // Przy wznawianiu pochodzi ona z checkpointu, więc bez tego panel
+      // pokazywałby liczby, pod którymi bieg nie idzie.
+      if (answer.config) {
+        state.params = { ...answer.config };
+        syncControls();
+      }
+      if (answer.resumed) {
+        clearPresetMark();
+        notify(answer.note || "Wznowiono — konfiguracja wczytana z checkpointu.");
+      } else if (answer.note) {
+        notify(answer.note);
+      }
+    }
+  } catch (e) {
+    notify("Serwer nie odpowiedział na żądanie startu.", true);
+  } finally {
+    state.busy = false;
+    syncButtons();
+  }
+}
+
+async function stop() {
+  notify("Zatrzymywanie…");
+  try {
+    const answer = await post("/api/stop");
+    if (!answer.was_running) notify("Nie było czego zatrzymywać.");
+  } catch (e) {
+    notify("Serwer nie odpowiedział na żądanie zatrzymania.", true);
+  }
 }
 
 function setHint(text) {
@@ -330,9 +510,15 @@ function setHint(text) {
 
 /* ------------------------------------------------------------- odpytywanie */
 
+let statusTicks = 0;
+
 async function pollStatus() {
   try {
     const s = await get("/api/status");
+    if (s.running !== state.running) {
+      state.running = Boolean(s.running);
+      syncButtons();
+    }
     setStatus(s.error ? s.error : s.message, Boolean(s.error));
     setHint(s.error ? "" : s.hint);
     el("mBackend").textContent = s.backend + (s.cuda ? " · " + s.cuda_name : " · CPU");
@@ -340,6 +526,29 @@ async function pollStatus() {
   } catch (e) {
     setStatus("Brak połączenia z serwerem.", true);
   }
+  // liczba klatek rośnie w trakcie biegu, więc odtwarzacz musi ją odświeżać —
+  // inaczej suwak zostaje na stanie z chwili przełączenia trybu
+  if (state.mode === "replay" && ++statusTicks % 10 === 0) await refreshFrames();
+}
+
+async function refreshFrames() {
+  try {
+    const meta = await get("/api/trajectory");
+    const count = meta.n_frames || 0;
+    if (count === state.frameCount) return;
+    state.frameCount = count;
+    el("scrub").max = String(Math.max(0, count - 1));
+    if (state.frame >= count) state.frame = Math.max(0, count - 1);
+    paintFrameLabel();
+    syncButtons();
+  } catch (e) {
+    /* następna próba za chwilę */
+  }
+}
+
+function paintFrameLabel() {
+  const shown = state.frameCount ? state.frame + 1 : 0;
+  el("frameLabel").textContent = `${shown} / ${state.frameCount}`;
 }
 
 async function pollView() {
@@ -352,7 +561,7 @@ async function pollView() {
     } else if (state.playing && state.frameCount > 0) {
       state.frame = (state.frame + 1) % state.frameCount;
       el("scrub").value = String(state.frame);
-      el("frameLabel").textContent = `${state.frame + 1} / ${state.frameCount}`;
+      paintFrameLabel();
       const response = await fetch(`/api/trajectory/frame?i=${state.frame}`);
       applyView(await response.arrayBuffer());
     }
@@ -365,12 +574,17 @@ async function pollView() {
 
 /* -------------------------------------------------------------- zdarzenia */
 
-el("btnStart").addEventListener("click", () => start({}));
-el("btnResume").addEventListener("click", () => start({ resume: true }));
-el("btnStop").addEventListener("click", () => post("/api/stop"));
+// Uruchom na działającym biegu znaczy „restart", a nie „nic". Serwer zatrzymuje
+// wtedy poprzedni bieg i czeka na jego zejście, bo katalog wyjściowy ma jednego
+// właściciela.
+el("btnStart").addEventListener("click", () => run(state.running ? { restart: true } : {}));
+el("btnResume").addEventListener("click", () => run({ resume: true }));
+el("btnStop").addEventListener("click", stop);
 
 el("modeLive").addEventListener("click", () => {
   state.mode = "live";
+  state.playing = false;
+  el("btnPlay").textContent = "▶";
   el("modeLive").classList.add("on");
   el("modeReplay").classList.remove("on");
   el("replayBar").hidden = true;
@@ -381,31 +595,44 @@ el("modeReplay").addEventListener("click", async () => {
   el("modeReplay").classList.add("on");
   el("modeLive").classList.remove("on");
   el("replayBar").hidden = false;
-  const meta = await get("/api/trajectory");
-  state.frameCount = meta.n_frames || 0;
-  el("scrub").max = String(Math.max(0, state.frameCount - 1));
-  el("frameLabel").textContent = `0 / ${state.frameCount}`;
+  await refreshFrames();
+  if (state.frameCount === 0) {
+    notify("Brak zapisanych klatek — uruchom bieg i wróć tu za chwilę.");
+  }
 });
 
 el("btnPlay").addEventListener("click", () => {
+  if (state.frameCount === 0) return;
   state.playing = !state.playing;
   el("btnPlay").textContent = state.playing ? "❚❚" : "▶";
 });
 
 el("scrub").addEventListener("input", async (event) => {
+  if (state.frameCount === 0) return;
   state.playing = false;
   el("btnPlay").textContent = "▶";
   state.frame = Number(event.target.value);
-  el("frameLabel").textContent = `${state.frame + 1} / ${state.frameCount}`;
-  const response = await fetch(`/api/trajectory/frame?i=${state.frame}`);
-  applyView(await response.arrayBuffer());
+  paintFrameLabel();
+  try {
+    const response = await fetch(`/api/trajectory/frame?i=${state.frame}`);
+    applyView(await response.arrayBuffer());
+  } catch (e) {
+    /* następny ruch suwaka spróbuje ponownie */
+  }
 });
 
 /* ------------------------------------------------------------------ start */
 
 (async () => {
-  state.schema = await get("/api/schema");
+  try {
+    state.schema = await get("/api/schema");
+  } catch (e) {
+    notify("Nie udało się pobrać schematu konfiguracji — serwer nie odpowiada.", true);
+    return;
+  }
   buildPanel(state.schema);
+  resetHud();
+  syncButtons();
   setInterval(pollStatus, 300);
   setInterval(pollView, 60);
 })();

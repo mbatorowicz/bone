@@ -90,7 +90,15 @@ class Diagnostics:
         c: float,
         dt: float,
         extra: dict[str, float] | None = None,
+        energy_removed: float = 0.0,
     ) -> dict[str, float]:
+        """``energy_removed`` to skumulowana energia odprowadzona przez dyssypację.
+
+        Bez tego argumentu włączenie chłodzenia zamieniłoby ``E_drift`` — główny
+        wskaźnik jakości całkowania w tym kodzie — w licznik tego, ile energii
+        celowo wyrzuciliśmy. Wielkością zachowaną w modelu z dyssypacją jest
+        E_tot + E_odprowadzona, i to jej dryf ma sens mierzyć.
+        """
         m = state.masses
         kinetic = float(sr.kinetic_energy(m, state.momenta, c).sum())
         pot = 0.5 * float(np.dot(m, potential))
@@ -110,6 +118,7 @@ class Diagnostics:
             "E_kin": kinetic,
             "E_pot": pot,
             "E_tot": total,
+            "E_cooled": float(energy_removed),
             "virial": float(2.0 * kinetic / abs(pot)) if pot != 0.0 else 0.0,
             "P_residual": float(np.linalg.norm(momentum_sum) / momentum_scale),
             "L_mag": float(np.linalg.norm(angular)),
@@ -124,12 +133,12 @@ class Diagnostics:
 
         if self.reference is None:
             self.reference = {
-                "E_tot": total,
+                "E_tot": total + energy_removed,
                 "L_mag": row["L_mag"],
                 "r_half": row["r_half"],
             }
         ref = self.reference
-        row["E_drift"] = _relative(total, ref["E_tot"])
+        row["E_drift"] = _relative(total + energy_removed, ref["E_tot"])
         row["L_drift"] = _relative(row["L_mag"], ref["L_mag"])
         row["r_half_ratio"] = row["r_half"] / (ref["r_half"] + 1e-300)
 

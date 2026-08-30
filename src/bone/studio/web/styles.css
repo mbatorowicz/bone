@@ -18,6 +18,13 @@
 
 * { box-sizing: border-box; }
 
+/* Atrybut `hidden` musi wygrywać z każdą regułą `display` z tego pliku.
+   Reguła autorska stoi w kaskadzie wyżej niż arkusz przeglądarki, więc samo
+   `display: grid` na elemencie ukrytym przez `hidden` unieważniało ukrycie —
+   pasek odtwarzania był widoczny także w trybie na żywo, gdzie jego przyciski
+   nic nie robią. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -97,16 +104,24 @@ button {
   cursor: pointer;
   transition: border-color 0.14s, background 0.14s, color 0.14s;
 }
-button:hover { border-color: #344054; background: #121826; }
+button:hover:not(:disabled) { border-color: #344054; background: #121826; }
+
+/* Przycisk bez skutku musi to pokazywać, zamiast przyjmować kliki po cichu. */
+button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
 button.go {
   background: var(--gold);
   border-color: var(--gold);
   color: #1b1405;
   font-weight: 650;
 }
-button.go:hover { filter: brightness(1.08); }
+button.go:hover:not(:disabled) { filter: brightness(1.08); }
 button.halt { color: #edaaaa; border-color: #4a2b2b; }
-button.halt:hover { border-color: #6d3c3c; background: #1c1114; }
+button.halt:hover:not(:disabled) { border-color: #6d3c3c; background: #1c1114; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .chips button { padding: 0.34rem 0.6rem; font-size: 0.74rem; }
@@ -184,6 +199,8 @@ input[type="range"]::-moz-range-thumb {
   width: 13px; height: 13px; border-radius: 50%;
   background: var(--ink); border: 2px solid var(--panel); cursor: pointer;
 }
+input[type="range"]:disabled { opacity: 0.35; }
+input[type="range"]:disabled::-webkit-slider-thumb { cursor: not-allowed; }
 
 select {
   width: 100%;
@@ -196,12 +213,27 @@ select {
   padding: 0.4rem 0.5rem;
 }
 
-.choice { margin-bottom: 0.5rem; }
-.choice label {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--dim);
-  margin-bottom: 0.25rem;
+/* Pole wyboru jest teraz zwykłą kontrolką w grupie, więc dziedziczy odstępy
+   po `.field` — zostaje tylko oddech pod samym listbox-em. */
+.choice select { margin-top: 0.1rem; }
+
+/* Podpowiedź: krótkie zdanie o tym, co pokrętło właściwie robi. Widoczna tylko
+   dla grup rozwiniętych, więc nie zaśmieca panelu, a przy pierwszym kontakcie
+   oszczędza czytania kodu. */
+.hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--faint);
+}
+
+/* Licznik pokręteł w nagłówku grupy — po zwinięciu widać, ile się tam kryje. */
+.group > summary em {
+  float: right;
+  font-style: normal;
+  font-family: var(--mono);
+  letter-spacing: 0;
+  color: var(--line);
 }
 
 #panel footer {
@@ -220,6 +252,9 @@ select {
   overflow-y: auto;
 }
 #status.bad { color: var(--bad); }
+/* Odpowiedź na kliknięcie. Wyróżniona, bo przez chwilę zasłania telemetrię
+   biegu i użytkownik musi wiedzieć, że to reakcja na jego akcję. */
+#status.notice { color: var(--cyan); }
 
 #hint {
   display: none;

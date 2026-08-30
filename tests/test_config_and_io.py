@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from bone.config import (
+    GEOMETRIES,
     PRESETS,
     Config,
     apply_runtime,
@@ -65,7 +66,7 @@ def test_every_preset_builds_and_runs(name):
     engine.close()
 
 
-@pytest.mark.parametrize("geometry", sorted(("ball", "sphere_shell", "disk", "torus", "gaussian", "filament", "two_clumps", "plummer")))
+@pytest.mark.parametrize("geometry", sorted(GEOMETRIES))
 def test_every_geometry_produces_finite_state(geometry):
     cfg = Config().replace_flat({"geometry": geometry, "n_particles": 200, "seed": 2})
     state = make_state(cfg)
