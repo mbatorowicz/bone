@@ -44,9 +44,6 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
 
-[tool.vercel]
-entrypoint = "asgi:app"
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
