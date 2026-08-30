@@ -1,4 +1,10 @@
-"""Chunkowana trajektoria."""
+"""Zapis trajektorii w kawałkach, z indeksem.
+
+Indeks trzyma numer kawałka i pozycję w kawałku dla każdej klatki, więc odczyt
+klatki to jedno otwarcie pliku. Poprzednia wersja przeglądała wszystkie kawałki
+po kolei, a odtwarzacz pyta o klatkę kilka razy na sekundę — koszt rósł liniowo
+z długością nagrania.
+"""
 
 from __future__ import annotations
 
@@ -7,91 +13,88 @@ from pathlib import Path
 
 import numpy as np
 
-from bone.domain.universe import Universe
+from bone.config import Config
+from bone.state import State
+
+META = "trajectory.json"
 
 
 class TrajectoryWriter:
-    def __init__(self, out_dir: str | Path, chunk_size: int = 50, stride: int = 4):
+    def __init__(self, out_dir: str | Path, chunk_size: int = 64, stride: int = 1) -> None:
         self.out = Path(out_dir)
         self.frames_dir = self.out / "frames"
         self.frames_dir.mkdir(parents=True, exist_ok=True)
-        self.chunk_size = chunk_size
+        self.chunk_size = max(1, chunk_size)
         self.stride = max(1, stride)
-        self._buf_pos: list[np.ndarray] = []
-        self._buf_c: list[np.ndarray] = []
+        self._positions: list[np.ndarray] = []
+        self._shades: list[np.ndarray] = []
         self._times: list[float] = []
-        self._chunk_i = 0
-        self.n_frames = 0
+        self._chunk = 0
+        self.index: list[list[int]] = []  # [chunk, offset] dla każdej klatki
 
-    def add(self, universe: Universe) -> None:
-        p = universe.positions[:: self.stride].astype(np.float32)
-        speed = np.linalg.norm(universe.velocities[:: self.stride], axis=1)
-        cmin, cmax = float(speed.min()) if speed.size else 0.0, float(speed.max()) if speed.size else 1.0
-        c = ((speed - cmin) / (cmax - cmin + 1e-12)).astype(np.float32)
-        self._buf_pos.append(p)
-        self._buf_c.append(c)
-        self._times.append(float(universe.t))
-        self.n_frames += 1
-        if len(self._buf_pos) >= self.chunk_size:
-            self.flush_chunk()
+    @property
+    def n_frames(self) -> int:
+        return len(self.index)
 
-    def flush_chunk(self) -> None:
-        if not self._buf_pos:
+    def add(self, state: State, cfg: Config) -> None:
+        positions = np.ascontiguousarray(state.positions[:: self.stride], dtype=np.float32)
+        shade = np.ascontiguousarray(
+            state.speed_over_c(cfg.physics.c)[:: self.stride], dtype=np.float32
+        )
+        self.index.append([self._chunk, len(self._positions)])
+        self._positions.append(positions)
+        self._shades.append(shade)
+        self._times.append(float(state.time))
+        if len(self._positions) >= self.chunk_size:
+            self.flush()
+
+    def flush(self) -> None:
+        if not self._positions:
             return
-        path = self.frames_dir / f"chunk_{self._chunk_i:04d}.npz"
         np.savez_compressed(
-            path,
-            positions=np.stack(self._buf_pos),
-            colors=np.stack(self._buf_c),
+            self.frames_dir / f"chunk_{self._chunk:05d}.npz",
+            positions=np.stack(self._positions),
+            shades=np.stack(self._shades),
             times=np.asarray(self._times, dtype=np.float64),
         )
-        self._chunk_i += 1
-        self._buf_pos.clear()
-        self._buf_c.clear()
+        self._chunk += 1
+        self._positions.clear()
+        self._shades.clear()
         self._times.clear()
         self._write_meta()
 
     def close(self) -> None:
-        self.flush_chunk()
+        self.flush()
         self._write_meta()
 
     def _write_meta(self) -> None:
-        meta = {
-            "n_frames": self.n_frames,
-            "n_chunks": self._chunk_i,
-            "stride": self.stride,
-        }
-        (self.out / "trajectory_meta.json").write_text(
-            json.dumps(meta), encoding="utf-8"
+        (self.out / META).write_text(
+            json.dumps(
+                {"n_frames": self.n_frames, "stride": self.stride, "index": self.index}
+            ),
+            encoding="utf-8",
         )
 
 
-def load_frame(out_dir: str | Path, index: int, stride: int = 4) -> dict | None:
-    out = Path(out_dir)
-    meta_path = out / "trajectory_meta.json"
-    if not meta_path.exists():
+def read_meta(out_dir: str | Path) -> dict:
+    path = Path(out_dir) / META
+    if not path.exists():
+        return {"n_frames": 0, "stride": 1, "index": []}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_frame(out_dir: str | Path, index: int) -> tuple[np.ndarray, np.ndarray, float] | None:
+    meta = read_meta(out_dir)
+    entries = meta.get("index", [])
+    if not 0 <= index < len(entries):
         return None
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    if index < 0 or index >= meta["n_frames"]:
+    chunk, offset = entries[index]
+    path = Path(out_dir) / "frames" / f"chunk_{chunk:05d}.npz"
+    if not path.exists():
         return None
-    # znajdź chunk
-    chunk_size = 50
-    for p in sorted((out / "frames").glob("chunk_*.npz")):
-        data = np.load(p)
-        times = data["times"]
-        n = int(times.shape[0])
-        if index < n:
-            pos = data["positions"][index]
-            col = data["colors"][index]
-            half = float(np.max(np.abs(pos)) * 1.05 + 1.0)
-            return {
-                "i": index,
-                "t": float(times[index]),
-                "half": half,
-                "x": pos[:, 0].tolist(),
-                "y": pos[:, 1].tolist(),
-                "z": pos[:, 2].tolist(),
-                "c": col.tolist(),
-            }
-        index -= n
-    return None
+    with np.load(path) as data:
+        return (
+            np.asarray(data["positions"][offset]),
+            np.asarray(data["shades"][offset]),
+            float(data["times"][offset]),
+        )

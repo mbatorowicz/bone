@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bone — grawitacja relatywistyczna</title>
+<link rel="stylesheet" href="/styles.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="shell">
+
+  <aside id="panel">
+    <header>
+      <h1>BONE</h1>
+      <p class="sub">Grawitacja N&#8209;ciał z kinematyką szczególnej teorii względności. Otwarta przestrzeń, wszystkie pary, mierzony błąd.</p>
+    </header>
+
+    <section class="block">
+      <h2>Presety</h2>
+      <div class="chips" id="presets"></div>
+    </section>
+
+    <section class="block">
+      <div class="actions">
+        <button class="go" id="btnStart">Uruchom</button>
+        <button id="btnResume">Wznów</button>
+        <button class="halt" id="btnStop">Stop</button>
+      </div>
+      <div class="segmented">
+        <button id="modeLive" class="on">Na żywo</button>
+        <button id="modeReplay">Odtwarzanie</button>
+      </div>
+      <div class="replay" id="replayBar" hidden>
+        <button id="btnPlay">▶</button>
+        <input type="range" id="scrub" min="0" max="0" value="0" />
+        <span class="tiny" id="frameLabel">0 / 0</span>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>Konfiguracja</h2>
+      <div id="choices"></div>
+      <div id="controls"></div>
+    </section>
+
+    <footer>
+      <div id="status">Gotowy.</div>
+      <div id="hint"></div>
+    </footer>
+  </aside>
+
+  <main id="stage">
+    <canvas id="view"></canvas>
+
+    <div class="overlay" id="hud">
+      <div class="hud-grid">
+        <div><span>⟨γ⟩</span><b id="mGamma">—</b></div>
+        <div><span>γ<sub>max</sub></span><b id="mGammaMax">—</b></div>
+        <div><span>β<sub>max</sub></span><b id="mBeta">—</b></div>
+        <div><span>Δt</span><b id="mDt">—</b></div>
+        <div><span>wirial 2T/|U|</span><b id="mVirial">—</b></div>
+        <div><span>r½ / r₀</span><b id="mRhalf">—</b></div>
+      </div>
+      <div class="hud-split">
+        <div class="metric">
+          <span>dryf energii</span>
+          <b id="mEdrift">—</b>
+          <canvas id="spark" width="220" height="34"></canvas>
+        </div>
+      </div>
+      <div class="hud-grid two">
+        <div><span>dryf |L|</span><b id="mLdrift">—</b></div>
+        <div><span>reszt. pędu</span><b id="mPres">—</b></div>
+      </div>
+      <div class="hud-backend">
+        <span id="mBackend">—</span>
+        <span id="mErr" class="err-badge" hidden></span>
+      </div>
+    </div>
+
+    <div class="overlay corner" id="clock"><b id="mTime">t = 0</b><span id="mStep">krok 0</span></div>
+  </main>
+
+</div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
