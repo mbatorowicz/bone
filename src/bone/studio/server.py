@@ -66,7 +66,12 @@ class ApiResponse:
 
 @dataclass
 class Session:
-    """Współdzielony stan między wątkiem HTTP a wątkiem symulacji."""
+    """Współdzielony stan między wątkiem HTTP a wątkiem symulacji.
+
+    Na Vercelu nie ma trwałego wątku tła — izolat zamraża się po odpowiedzi.
+    Wtedy silnik siedzi w ``engine`` / ``writer``, a każdy poll ``/api/view``
+    albo ``/api/status`` robi jeden obieg pętli (``tick_serverless``).
+    """
 
     lock: threading.Lock = field(default_factory=threading.Lock)
     running: bool = False
@@ -81,6 +86,9 @@ class Session:
     backend_label: str = "—"
     out_dir: str = Config().run.out_dir
     worker: threading.Thread | None = None
+    engine: Engine | None = None
+    writer: trajectory.TrajectoryWriter | None = None
+    performed: int = 0
 
     def snapshot_status(self) -> dict:
         with self.lock:
@@ -146,6 +154,145 @@ def _format_message(row: dict[str, float]) -> str:
     if "force_err_rms" in row:
         parts.append(f"błąd siły={row['force_err_rms']:.2%}")
     return "  ".join(parts)
+
+
+def _finish_serverless(engine: Engine, writer: trajectory.TrajectoryWriter | None, *, error: str = "") -> None:
+    out = Path(engine.cfg.run.out_dir)
+    with contextlib.suppress(Exception):
+        if writer is not None:
+            writer.close()
+    with contextlib.suppress(Exception):
+        checkpoint.save(engine.state, engine.cfg, out)
+    with contextlib.suppress(Exception):
+        engine.close()
+    with SESSION.lock:
+        SESSION.running = False
+        SESSION.stop_requested = False
+        SESSION.engine = None
+        SESSION.writer = None
+        if error:
+            SESSION.error = error
+            SESSION.message = "Błąd symulacji."
+        else:
+            SESSION.message = f"Zatrzymano w t={engine.state.time:.3f}. Checkpoint zapisany."
+
+
+def tick_serverless() -> None:
+    """Jeden obieg pętli silnika — wołany przy pollu na Vercelu.
+
+    Bez tego Start kończyłby się na „Przygotowanie…": request startujący wątek
+    wraca natychmiast, izolat się zamraża, a wątek nigdy nie dostaje CPU.
+    """
+    if not on_serverless():
+        return
+    with SESSION.lock:
+        if not SESSION.running or SESSION.engine is None:
+            return
+        engine = SESSION.engine
+        writer = SESSION.writer
+        stop = SESSION.stop_requested
+        pending = SESSION.pending_config
+        SESSION.pending_config = None
+        performed = SESSION.performed
+
+    if stop:
+        _finish_serverless(engine, writer)
+        return
+
+    try:
+        if pending is not None:
+            engine.apply_config(pending)
+        run = engine.cfg.run
+        unlimited = run.steps <= 0
+
+        def should_stop() -> bool:
+            with SESSION.lock:
+                return SESSION.stop_requested
+
+        engine.advance(max(1, int(run.time_scale)), should_stop)
+        performed += 1
+
+        check_every = int(engine.cfg.solver.error_check_every)
+        if check_every > 0 and performed % check_every == 0:
+            engine.check_backend_error()
+
+        row = None
+        if performed % max(1, run.diagnostics_every) == 0:
+            row = engine.collect_diagnostics()
+        view = None
+        if performed % max(1, run.live_every) == 0:
+            view = pack_view(engine.state, engine.cfg)
+        if writer is not None and performed % max(1, run.trajectory_every) == 0:
+            writer.add(engine.state, engine.cfg)
+
+        if not engine.state.is_finite():
+            raise FloatingPointError(
+                f"stan przestał być skończony na kroku {engine.state.step}"
+            )
+
+        done = (not unlimited and performed >= run.steps) or should_stop()
+        with SESSION.lock:
+            SESSION.performed = performed
+            SESSION.config = engine.cfg
+            if row is not None:
+                SESSION.diagnostics = row
+                SESSION.message = _format_message(row)
+                SESSION.hint = engine.accuracy_hint()
+            if view is not None:
+                SESSION.view = view
+            if done:
+                # dokończenie poza zamkiem — zapis checkpointu
+                pass
+        if done:
+            _finish_serverless(engine, writer)
+    except Exception as exc:
+        _finish_serverless(
+            engine,
+            writer,
+            error=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+        )
+
+
+def _start_serverless(cfg: Config, resume: bool) -> ApiResponse:
+    with SESSION.lock:
+        if SESSION.running:
+            return ApiResponse.json(
+                409, {"error": "symulacja już działa — użyj Restart albo Stop"}
+            )
+    out = Path(cfg.run.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    state: State | None = None
+    if resume and checkpoint.exists(out):
+        state, _ = checkpoint.load(out)
+    try:
+        engine = Engine(cfg, state=state)
+    except Exception as exc:
+        return ApiResponse.json(500, {"error": f"{type(exc).__name__}: {exc}"})
+    writer = trajectory.TrajectoryWriter(out, stride=max(1, cfg.run.point_stride))
+    with SESSION.lock:
+        SESSION.running = True
+        SESSION.stop_requested = False
+        SESSION.error = ""
+        SESSION.message = (
+            f"Start: {engine.state.n} cząstek, {engine.describe()}"
+            if state is None
+            else f"Wznowiono od t={engine.state.time:.3f}"
+        )
+        SESSION.hint = ""
+        SESSION.config = cfg
+        SESSION.out_dir = cfg.run.out_dir
+        SESSION.diagnostics = {}
+        SESSION.view = pack_view(engine.state, cfg)
+        SESSION.backend_label = engine.describe()
+        SESSION.engine = engine
+        SESSION.writer = writer
+        SESSION.performed = 0
+        SESSION.worker = None
+    # pierwszy tick od razu, żeby status nie wisiał na pustym „Przygotowanie…”
+    tick_serverless()
+    return ApiResponse.json(
+        200, {"ok": True, "config": cfg.to_flat(), "resumed": resume, "note": ""}
+    )
 
 
 def _simulation(cfg: Config, resume: bool) -> None:
@@ -276,6 +423,16 @@ def stop_and_wait(timeout: float | None = None) -> bool:
     przemieszanie danych. Zamek jest zwolniony na czas `join`, inaczej wątek
     symulacji nie mógłby zaktualizować statusu i doszłoby do zakleszczenia.
     """
+    if on_serverless():
+        with SESSION.lock:
+            engine = SESSION.engine
+            writer = SESSION.writer
+            was = SESSION.running
+            SESSION.stop_requested = was
+        if was and engine is not None:
+            _finish_serverless(engine, writer)
+        return True
+
     limit = stop_timeout() if timeout is None else timeout
     with SESSION.lock:
         if not SESSION.running:
@@ -355,6 +512,14 @@ def _start(body: dict) -> ApiResponse:
             )
         cfg = apply_host_limits(resumed)
 
+    if on_serverless():
+        answer = _start_serverless(cfg, resume)
+        if answer.status == 200:
+            payload = json.loads(answer.body)
+            payload["note"] = note
+            return ApiResponse.json(200, payload)
+        return answer
+
     # rezerwacja slotu i start wątku pod tym samym zamkiem — bez tego dwa
     # szybkie żądania potrafiły uruchomić dwie symulacje na jeden katalog
     with SESSION.lock:
@@ -371,6 +536,9 @@ def _start(body: dict) -> ApiResponse:
         SESSION.out_dir = cfg.run.out_dir
         SESSION.diagnostics = {}
         SESSION.view = empty_view()
+        SESSION.engine = None
+        SESSION.writer = None
+        SESSION.performed = 0
         worker = threading.Thread(target=_simulation, args=(cfg, resume), daemon=True)
         SESSION.worker = worker
     worker.start()
@@ -404,8 +572,10 @@ def dispatch_get(path: str, query: str = "") -> ApiResponse:
     if path == "/api/preset":
         return _preset(query)
     if path == "/api/status":
+        tick_serverless()
         return ApiResponse.json(200, SESSION.snapshot_status())
     if path == "/api/view":
+        tick_serverless()
         with SESSION.lock:
             payload = SESSION.view
         return ApiResponse.raw(200, payload, "application/octet-stream")
@@ -427,7 +597,11 @@ def dispatch_post(path: str, body: dict) -> ApiResponse:
         # zatrzymanym układzie wygląda dokładnie jak klik zignorowany.
         with SESSION.lock:
             was_running = SESSION.running
+            engine = SESSION.engine
+            writer = SESSION.writer
             SESSION.stop_requested = was_running
+        if on_serverless() and was_running and engine is not None:
+            _finish_serverless(engine, writer)
         return ApiResponse.json(200, {"ok": True, "was_running": was_running})
     if path == "/api/apply":
         return _apply(body)

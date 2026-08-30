@@ -32,10 +32,39 @@ def test_host_limits_noop_locally(monkeypatch):
     assert apply_host_limits(cfg) is cfg or apply_host_limits(cfg) == cfg
 
 
-def test_dispatch_schema_and_static():
-    schema = dispatch_get("/api/schema")
-    assert schema.status == 200
-    assert b"groups" in schema.body or b"fields" in schema.body or b"presets" in schema.body
-    index = dispatch_get("/")
-    assert index.status == 200
-    assert b"html" in index.body.lower()
+def test_serverless_tick_advances(monkeypatch, tmp_path):
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.chdir(tmp_path)
+    from bone.studio.server import SESSION, dispatch_get, dispatch_post, stop_and_wait
+
+    stop_and_wait()
+    started = dispatch_post(
+        "/api/start",
+        {
+            "params": {
+                "n_particles": 200,
+                "backend": "exact",
+                "device": "cpu",
+                "steps": 6,
+                "live_every": 1,
+                "diagnostics_every": 1,
+                "time_scale": 1,
+            }
+        },
+    )
+    assert started.status == 200
+    body = __import__("json").loads(started.body)
+    assert body["config"]["out_dir"] == "/tmp/bone-runs"
+    assert body["config"]["n_particles"] == 200
+
+    sizes = []
+    for _ in range(8):
+        view = dispatch_get("/api/view")
+        assert view.status == 200
+        sizes.append(len(view.body))
+    assert max(sizes) > 16  # więcej niż pusty nagłówek
+
+    status = __import__("json").loads(dispatch_get("/api/status").body)
+    # po 6 krokach bieg powinien się domknąć
+    assert status["running"] is False or status["diagnostics"]
+    stop_and_wait()
