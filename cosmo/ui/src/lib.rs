@@ -241,14 +241,23 @@ impl App {
             rect.width() as usize,
             rect.height() as usize,
         );
-        let texture = self
-            .texture
-            .get_or_insert_with(|| ui.ctx().load_texture("cloud", image.clone(), TextureOptions::LINEAR));
-        texture.set(image, TextureOptions::LINEAR);
-        ui.put(
-            rect,
-            egui::Image::new(&*texture).fit_to_exact_size(rect.size()),
-        );
+        let texture = match &mut self.texture {
+            Some(existing) if existing.size() == image.size => {
+                existing.set(image, TextureOptions::LINEAR);
+                existing
+            }
+            slot => {
+                *slot = Some(ui.ctx().load_texture("cloud", image, TextureOptions::LINEAR));
+                slot.as_mut().expect("tekstura po zapisie")
+            }
+        };
+        // `paint_at` rysuje w już przydzielonym prostokącie. `Image` jako widget
+        // alokowałby go drugi raz i przy `maintain_aspect_ratio` (domyślnie włączone)
+        // potrafiłby złożyć obraz do paska albo wcale go nie pokazać.
+        egui::Image::new(&*texture)
+            .maintain_aspect_ratio(false)
+            .fit_to_exact_size(rect.size())
+            .paint_at(ui, rect);
     }
 }
 

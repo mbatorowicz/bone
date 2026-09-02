@@ -70,9 +70,11 @@ pub fn render(
             continue;
         }
         let shade = shade.clamp(0.0, 1.0);
-        // Wkład rośnie z kwadratem odcienia, więc jasne obszary wygrywają nad
-        // rozlanym tłem także wtedy, gdy jest w nim więcej cząstek.
-        splat(&mut glow, &view, u, v, 0.15 + 3.4 * shade * shade, shade > 0.28);
+        // Podłoga 0,85 jest po to, żeby samotna cząstka była widoczna: na dysku
+        // albo torusie wypada ~1 cząstka na piksel, a wtedy sam odcień β≈0,2
+        // dawałby wkład 0,3 i znikał w tle. Kwadrat odcienia nadal wyróżnia
+        // szybkie zgęstki, gdy cząstki się złożą.
+        splat(&mut glow, &view, u, v, 0.85 + 2.6 * shade * shade);
     }
 
     let pixels = glow.iter().map(|g| brightness_to_color(*g)).collect();
@@ -82,17 +84,13 @@ pub fn render(
     }
 }
 
-/// Wkład jednej cząstki: piksel, a dla jaśniejszych także czterej sąsiedzi.
+/// Wkład jednej cząstki: piksel i czterej sąsiedzi.
 ///
-/// Rozmycie tylko dla jasnych punktów, bo w pustce rozlewałoby szum na sąsiedztwo,
-/// a właśnie w pustce ma być ciemno.
-fn splat(glow: &mut [f32], view: &View, u: usize, v: usize, weight: f32, wide: bool) {
+/// Bez sąsiadów samotna cząstka to jeden piksel o jasności tła+3 — na monitorze
+/// tego nie widać. `project` odrzuca krawędź, więc sąsiedzi są w obrazie.
+fn splat(glow: &mut [f32], view: &View, u: usize, v: usize, weight: f32) {
     let (width, _) = view.size();
     glow[v * width + u] += weight;
-    if !wide {
-        return;
-    }
-    // `project` odrzuca krawędź, więc wszyscy czterej sąsiedzi są w obrazie.
     for (du, dv) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
         let x = (u as i32 + du) as usize;
         let y = (v as i32 + dv) as usize;
@@ -104,7 +102,10 @@ fn brightness_to_color(glow: f32) -> Color32 {
     if glow <= 1e-6 {
         return BACKGROUND;
     }
-    let t = (glow * 0.22).asinh() / 2.4_f32.asinh();
+    // 1,15 / 1,6: samotna cząstka o wadze 0,85 daje t≈0,69 (błękit, widać),
+    // a zgęstek o wadze ~4 siada na białym końcu palety. Poprzednie 0,22 / 2,4
+    // było skalibrowane pod nachodzące na siebie jądra i gubiło rozrzedzony układ.
+    let t = (glow * 1.15).asinh() / 1.6_f32.asinh();
     heat(t)
 }
 
@@ -162,6 +163,28 @@ mod tests {
                 shades: vec![shade; n],
             }
         }
+
+        /// Cienki pierścień — ten sam rozkład co torus w presecie fragmentation.
+        fn ring(n: usize, radius: f64, shade: f32) -> Self {
+            Self {
+                points: (0..n)
+                    .map(|i| {
+                        let a = std::f64::consts::TAU * i as f64 / n as f64;
+                        vec3(radius * a.cos(), radius * a.sin(), 0.0)
+                    })
+                    .collect(),
+                shades: vec![shade; n],
+            }
+        }
+    }
+
+    fn max_luma(image: &ColorImage) -> u32 {
+        image
+            .pixels
+            .iter()
+            .map(|p| p.r() as u32 + p.g() as u32 + p.b() as u32)
+            .max()
+            .unwrap_or(0)
     }
 
     impl PointCloud for Cloud {
@@ -237,6 +260,20 @@ mod tests {
     fn zero_brightness_is_background() {
         assert_eq!(brightness_to_color(0.0), BACKGROUND);
         assert_ne!(brightness_to_color(1.0), BACKGROUND);
+    }
+
+    /// Samotne cząstki o β typowym dla chmury SR (~0,2) muszą być czytelne.
+    /// Poprzednia skala dawała im ~3 jednostki RGB nad tłem — czarny ekran.
+    #[test]
+    fn sparse_ring_with_typical_beta_is_visible() {
+        let cloud = Cloud::ring(800, 8.0, 0.21);
+        let image = render(Some(&cloud), &Camera::default(), 400, 300);
+        assert!(lit_pixels(&image) > 80, "narysowano {}", lit_pixels(&image));
+        assert!(
+            max_luma(&image) >= 80,
+            "pierścień jest za ciemny: max luma {}",
+            max_luma(&image)
+        );
     }
 
     /// Renderer nie może się wywrócić na absurdalnym rozmiarze okna ani na chmurze

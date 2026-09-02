@@ -181,6 +181,28 @@ mod tests {
     }
 
     #[test]
+    fn live_galaxy_paints_visible_pixels() {
+        use crate::camera::Camera;
+        use crate::render::render;
+        use eframe::egui::Color32;
+
+        let view = View::Live(
+            Session::start_sr(small_sr(), scratch("paint-sr"), false).unwrap(),
+        );
+        let image = render(Some(view.cloud()), &Camera::default(), 320, 240);
+        let background = Color32::from_rgb(6, 8, 14);
+        let lit = image.pixels.iter().filter(|p| **p != background).count();
+        let max_luma = image
+            .pixels
+            .iter()
+            .map(|p| p.r() as u32 + p.g() as u32 + p.b() as u32)
+            .max()
+            .unwrap_or(0);
+        assert!(lit > 20, "żywa chmura nie trafiła na obraz: {lit} pikseli");
+        assert!(max_luma >= 80, "żywa chmura jest za ciemna: luma {max_luma}");
+    }
+
+    #[test]
     fn shades_of_both_models_are_normalized() {
         let sr = Session::start_sr(small_sr(), scratch("shade-sr"), false).unwrap();
         for i in 0..sr.len() {
