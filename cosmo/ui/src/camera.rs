@@ -21,7 +21,9 @@ pub struct Camera {
 /// Pion jest ograniczony, bo za biegunem obrót zaczyna działać na odwrót i widok
 /// staje się niesterowalny.
 const PITCH_LIMIT: f32 = 1.2;
-const ZOOM_RANGE: (f32, f32) = (0.15, 8.0);
+/// Górny próg ma pozwolić wypełnić kadr pojedynczym zgęstkiem; niżej przybliżenie
+/// urywało się, zanim było widać strukturę wewnątrz chmury.
+const ZOOM_RANGE: (f32, f32) = (0.15, 80.0);
 const PAN_LIMIT: f32 = 3.0;
 
 impl Default for Camera {
