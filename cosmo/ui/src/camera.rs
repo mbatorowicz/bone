@@ -1,10 +1,11 @@
 //! Kamera orbitalna i rzut na ekran.
 //!
-//! Kamera nie ma pozycji w przestrzeni symulacji — ma dwa kąty i przybliżenie, a to,
-//! co widzi, jest zawsze wyśrodkowane na chmurze i przeskalowane do jej rozciągłości.
-//! Wynika to z tego, co się symuluje: chmura zapada się o rzędy wielkości albo
-//! rozszerza razem ze wszechświatem, więc kamera o ustalonym położeniu pokazywałaby
-//! przez większość biegu pustą przestrzeń albo jedną plamę.
+//! Kamera nie ma pozycji w przestrzeni symulacji — ma dwa kąty, przybliżenie
+//! i przesunięcie rzutu. To, co widzi, jest wyśrodkowane na chmurze i przeskalowane
+//! do jej rozciągłości; `pan` tylko przesuwa ten obraz po ekranie. Wynika to z tego,
+//! co się symuluje: chmura zapada się o rzędy wielkości albo rozszerza razem ze
+//! wszechświatem, więc kamera o ustalonym położeniu pokazywałaby przez większość
+//! biegu pustą przestrzeń albo jedną plamę.
 
 use bone_core::vec3::Vec3;
 
@@ -13,12 +14,15 @@ pub struct Camera {
     pub yaw: f32,
     pub pitch: f32,
     pub zoom: f32,
+    /// Przesunięcie rzutu w zrotowanej przestrzeni (przed skalą pikseli).
+    pub pan: (f32, f32),
 }
 
 /// Pion jest ograniczony, bo za biegunem obrót zaczyna działać na odwrót i widok
 /// staje się niesterowalny.
 const PITCH_LIMIT: f32 = 1.2;
 const ZOOM_RANGE: (f32, f32) = (0.15, 8.0);
+const PAN_LIMIT: f32 = 3.0;
 
 impl Default for Camera {
     fn default() -> Self {
@@ -26,6 +30,7 @@ impl Default for Camera {
             yaw: 0.7,
             pitch: 0.35,
             zoom: 1.0,
+            pan: (0.0, 0.0),
         }
     }
 }
@@ -40,8 +45,23 @@ impl Camera {
         self.zoom = (self.zoom * (1.0 - scroll * 0.001)).clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
     }
 
+    /// Przesuń rzut razem z wskaźnikiem: `dx`, `dy` to delta w pikselach.
+    pub fn pan_by(&mut self, dx: f32, dy: f32, width: f32, height: f32) {
+        let scale = Self::projection_scale(self.zoom, width, height);
+        if scale <= 1e-6 {
+            return;
+        }
+        self.pan.0 = (self.pan.0 + dx / scale).clamp(-PAN_LIMIT, PAN_LIMIT);
+        self.pan.1 = (self.pan.1 + dy / scale).clamp(-PAN_LIMIT, PAN_LIMIT);
+    }
+
+    fn projection_scale(zoom: f32, width: f32, height: f32) -> f32 {
+        width.min(height) * 0.42 * zoom
+    }
+
     /// Ustaw rzut dla konkretnej chmury i rozmiaru obrazu.
     pub fn view(&self, center: Vec3, span: f64, width: usize, height: usize) -> View {
+        let scale = Self::projection_scale(self.zoom, width as f32, height as f32);
         View {
             center,
             half_span: (0.5 * span).max(1e-9),
@@ -49,8 +69,11 @@ impl Camera {
             sin_yaw: self.yaw.sin(),
             cos_pitch: self.pitch.cos(),
             sin_pitch: self.pitch.sin(),
-            scale: width.min(height) as f32 * 0.42 * self.zoom,
-            origin: (width as f32 * 0.5, height as f32 * 0.5),
+            scale,
+            origin: (
+                width as f32 * 0.5 + self.pan.0 * scale,
+                height as f32 * 0.5 + self.pan.1 * scale,
+            ),
             width,
             height,
         }
@@ -115,6 +138,7 @@ mod tests {
             yaw: 0.0,
             pitch: 0.0,
             zoom: 1.0,
+            pan: (0.0, 0.0),
         }
         .view(ZERO, 2.0, 200, 100)
     }
@@ -143,6 +167,7 @@ mod tests {
                 yaw,
                 pitch: 0.0,
                 zoom: 1.0,
+                pan: (0.0, 0.0),
             }
             .view(ZERO, 2.0, 200, 200)
         };
@@ -177,15 +202,38 @@ mod tests {
         for _ in 0..1000 {
             camera.orbit(50.0, 50.0);
             camera.zoom_by(-100.0);
+            camera.pan_by(200.0, -200.0, 200.0, 200.0);
         }
         assert!(camera.pitch <= PITCH_LIMIT);
         assert!(camera.zoom <= ZOOM_RANGE.1);
+        assert!(camera.pan.0 <= PAN_LIMIT);
+        assert!(camera.pan.1 >= -PAN_LIMIT);
         for _ in 0..1000 {
             camera.orbit(0.0, -50.0);
             camera.zoom_by(100.0);
+            camera.pan_by(-200.0, 200.0, 200.0, 200.0);
         }
         assert!(camera.pitch >= -PITCH_LIMIT);
         assert!(camera.zoom >= ZOOM_RANGE.0);
+        assert!(camera.pan.0 >= -PAN_LIMIT);
+        assert!(camera.pan.1 <= PAN_LIMIT);
+    }
+
+    /// Przeciągnięcie o N pikseli ma przesunąć środek chmury o te same N pikseli.
+    /// Inna skala złamałaby „chwytanie" sceny: kursor uciekałby spod punktu.
+    #[test]
+    fn pan_moves_the_projected_center_with_the_pointer() {
+        let mut camera = Camera {
+            yaw: 0.0,
+            pitch: 0.0,
+            zoom: 1.0,
+            pan: (0.0, 0.0),
+        };
+        let before = camera.view(ZERO, 2.0, 200, 100).project(ZERO).unwrap();
+        camera.pan_by(20.0, 10.0, 200.0, 100.0);
+        let after = camera.view(ZERO, 2.0, 200, 100).project(ZERO).unwrap();
+        assert_eq!(after.0, before.0 + 20);
+        assert_eq!(after.1, before.1 + 10);
     }
 
     /// Degeneracja chmury (jedna cząstka, zerowa rozciągłość) nie może dawać

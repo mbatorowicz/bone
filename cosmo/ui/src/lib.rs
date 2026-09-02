@@ -2,7 +2,7 @@
 //!
 //! Podział na moduły idzie po tym, co się zmienia niezależnie:
 //!
-//! - [`camera`] — obrót i przybliżenie, czysta geometria,
+//! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela, jedyne miejsce dotykające `egui`,
 //! - [`simulation`] — dwa modele pod jednym interfejsem,
@@ -41,7 +41,6 @@ pub struct App {
     view: Option<View>,
     running: bool,
     camera: Camera,
-    drag_origin: Option<egui::Pos2>,
     texture: Option<TextureHandle>,
     status: String,
     error: String,
@@ -57,7 +56,6 @@ impl Default for App {
             view: None,
             running: false,
             camera: Camera::default(),
-            drag_origin: None,
             texture: None,
             status: "Gotowe. Wybierz model i uruchom — liczy ten komputer.".to_string(),
             error: String::new(),
@@ -219,16 +217,12 @@ impl App {
 
     fn draw_cloud(&mut self, ui: &mut egui::Ui) {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::drag());
-        if response.dragged() {
-            if let (Some(previous), Some(current)) =
-                (self.drag_origin, response.interact_pointer_pos())
-            {
-                let delta = current - previous;
-                self.camera.orbit(delta.x, delta.y);
-            }
-            self.drag_origin = response.interact_pointer_pos();
-        } else {
-            self.drag_origin = None;
+        if response.dragged_by(egui::PointerButton::Secondary) {
+            let delta = response.drag_delta();
+            self.camera.pan_by(delta.x, delta.y, rect.width(), rect.height());
+        } else if response.dragged_by(egui::PointerButton::Primary) {
+            let delta = response.drag_delta();
+            self.camera.orbit(delta.x, delta.y);
         }
         let scroll = ui.input(|i| i.raw_scroll_delta.y);
         if scroll != 0.0 {
