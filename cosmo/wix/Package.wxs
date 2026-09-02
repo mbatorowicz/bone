@@ -2,7 +2,7 @@
   <Package
       Name="Bone Cosmo"
       Manufacturer="mbatorowicz"
-      Version="0.1.0"
+      Version="0.1.1"
       UpgradeCode="a7c3e1f0-4b2d-4e8a-9c11-b01e00000001"
       Scope="perMachine">
     <MajorUpgrade DowngradeErrorMessage="Nowsza wersja Bone Cosmo jest już zainstalowana." />
