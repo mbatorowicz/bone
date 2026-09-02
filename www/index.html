@@ -39,20 +39,22 @@
           <a
             class="btn primary"
             id="pobierz"
+            data-asset="msi"
             href="https://github.com/mbatorowicz/bone/releases/latest/download/BoneCosmo.msi"
           >
             Pobierz instalator
           </a>
           <a
             class="btn ghost"
+            data-asset="exe"
             href="https://github.com/mbatorowicz/bone/releases/latest/download/BoneCosmo.exe"
           >
             Plik przenośny
           </a>
         </div>
         <p class="fine">
-          Windows 10 lub 11, 64-bit. Instalator około 3&nbsp;MB, program około
-          9&nbsp;MB.
+          <a id="wersja" href="https://github.com/mbatorowicz/bone/releases/latest">Najnowsza wersja</a>
+          · Windows 10 lub 11, 64-bit · instalator ≈&nbsp;3&nbsp;MB, program ≈&nbsp;9&nbsp;MB
         </p>
       </section>
 
@@ -110,7 +112,30 @@
     <footer class="wrap foot">
       <p>
         <a href="https://github.com/mbatorowicz/bone">github.com/mbatorowicz/bone</a>
+        ·
+        <a href="https://github.com/mbatorowicz/bone/releases/latest">wydania</a>
       </p>
     </footer>
+    <script>
+      fetch("https://api.github.com/repos/mbatorowicz/bone/releases/latest")
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((rel) => {
+          const version = document.getElementById("wersja");
+          if (version && rel.tag_name) {
+            version.textContent = rel.tag_name;
+            version.href = rel.html_url;
+          }
+          for (const asset of rel.assets ?? []) {
+            const kind = asset.name.endsWith(".msi")
+              ? "msi"
+              : asset.name.endsWith(".exe")
+                ? "exe"
+                : null;
+            const link = kind && document.querySelector(`[data-asset="${kind}"]`);
+            if (link) link.href = asset.browser_download_url;
+          }
+        })
+        .catch(() => {});
+    </script>
   </body>
 </html>
