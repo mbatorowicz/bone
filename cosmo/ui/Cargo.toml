@@ -1,0 +1,16 @@
+[package]
+name = "bone-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Okno Bone: panel egui i rzut chmury"
+
+[lib]
+name = "bone_ui"
+path = "src/lib.rs"
+
+[dependencies]
+bone-core = { path = "../core" }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu", "accesskit"] }
+egui = "0.31"

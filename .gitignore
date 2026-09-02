@@ -1,17 +1,21 @@
+# Wyniki kompilacji
+target/
+cosmo/target/
+cosmo/dist/
+
+# Wyniki biegów: checkpointy i klatki trajektorii
+runs/
+out/
+
+# Stary interpreter Pythona — aplikacja jest w Ruście
+.venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
-.eggs/
-dist/
-build/
-.venv/
-venv/
-out/
-runs/
+
+# Obrazki z dokumentacji są śledzone, zrzuty z biegów nie
 *.png
 !docs/*.png
+
 .DS_Store
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 .vercel

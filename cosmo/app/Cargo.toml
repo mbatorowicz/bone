@@ -1,0 +1,20 @@
+[package]
+name = "bone-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Grawitacja N-ciał: kinematyka SR i ΛCDM Planck 2018"
+
+[[bin]]
+name = "BoneCosmo"
+path = "src/main.rs"
+
+[dependencies]
+bone-core = { path = "../core" }
+bone-ui = { path = "../ui" }
+
+[package.metadata.wix]
+name = "Bone Cosmo"
+upgrade-guid = "a7c3e1f0-4b2d-4e8a-9c11-b01e00000001"
+path-guid = "a7c3e1f0-4b2d-4e8a-9c11-b01e00000002"

@@ -1,12 +1,40 @@
 # Bone
 
-Grawitacja N-ciał z kinematyką szczególnej teorii względności. Otwarta przestrzeń
-bez ścian, wszystkie pary oddziałują, a błąd przybliżenia jest **mierzony i pokazywany**,
-nie zakładany.
+Grawitacja N ciał na jednym komputerze. Dwa modele, jeden silnik, jedna aplikacja
+w Ruście — okno z panelem albo bieg wsadowy z wiersza poleceń.
 
-![Studio](docs/studio.png)
+- **`sr`** — odosobniona chmura cząstek. Grawitacja newtonowska, kinematyka
+  szczególnej teorii względności, dyssypacja zależna od gęstości.
+- **`lcdm`** — próbka materii w modelu standardowym kosmologii (Planck 2018).
+  Warunki początkowe z widma mocy, całkowanie po `ln a` od `z = 49` do dziś.
 
-## Co to właściwie liczy
+Błąd solvera przybliżonego jest **mierzony i pokazywany**, nie zakładany. To jedyna
+liczba, która odróżnia przybliżenie od usterki.
+
+## Budowanie i uruchamianie
+
+```bash
+cd cosmo
+cargo build --release          # wynik: target/release/BoneCosmo
+cargo test --workspace         # 248 testów
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+```bash
+BoneCosmo                                        # okno z panelem
+BoneCosmo presety                                # nazwy zestawów nastaw SR
+BoneCosmo sr   --zestaw fragmentation --kroki 2000 --do runs/frag
+BoneCosmo lcdm --zestaw struktury --do runs/lss
+BoneCosmo sr   --wznow --do runs/frag            # dalej z checkpointu
+BoneCosmo lcdm --wznow --do runs/lss             # to samo dla ΛCDM
+BoneCosmo --pomoc
+```
+
+Bieg wsadowy zostawia w katalogu wyjściowym `checkpoint.bin` (pełny stan w `f64`,
+do wznowienia), `config.json` (użyte parametry) i `frames/` z indeksem
+`trajectory.json` (klatki w `f32`, do oglądania).
+
+## Model SR: co to liczy
 
 Zmienną stanu jest **pęd**, nie prędkość:
 
@@ -15,70 +43,55 @@ dx/dt = p c² / E,        E = √((pc)² + (mc²)²)
 dp/dt = F
 ```
 
-Prędkość wychodzi z pędu, więc `|v| < c` jest spełnione **tożsamościowo** — nie ma
-żadnego obcinania prędkości ani sprawdzania warunków. Nawet dla pędu 10³⁰⁰ obliczenia
-nie produkują `NaN` (patrz `tests/test_relativity.py`).
+Prędkość wynika z pędu, więc `|v| < c` jest spełnione **tożsamościowo** — nie ma
+obcinania prędkości ani sprawdzania warunków. Nawet dla pędu 10³⁰⁰ nie powstaje `NaN`.
 
-Siła jest **newtonowska**, ze zmiękczeniem:
+Siła jest newtonowska, ze zmiękczeniem Plummera:
 
 ```
-F_i = -G mᵢ Σⱼ mⱼ (xᵢ - xⱼ) / (|xᵢ - xⱼ|² + ε²)^{3/2}
+F_i = −G mᵢ Σⱼ mⱼ (xᵢ − xⱼ) / (|xᵢ − xⱼ|² + ε²)^{3/2}
 ```
 
-Całkowanie: leapfrog KDK (kick-drift-kick) na pędzie, z adaptacyjnym krokiem
-`dt ≤ η√(ε/a_max)`.
+Całkowanie: leapfrog KDK na pędzie, krok adaptacyjny `dt ≤ η√(ε/a_max)`.
 
 ### Czego to NIE jest
 
-To model „kinematyka SR + siła Newtona", a nie ogólna teoria względności. Konkretnie:
+To model „kinematyka SR + siła Newtona", a nie ogólna teoria względności:
 
-- **grawitacja jest natychmiastowa** — nie ma opóźnienia, fal grawitacyjnych ani pędu
-  niesionego przez pole;
-- źródłem grawitacji jest **masa spoczynkowa**, nie pełny tensor energii-pędu;
+- grawitacja jest natychmiastowa — bez opóźnienia, fal grawitacyjnych i pędu pola;
+- źródłem grawitacji jest masa spoczynkowa, nie pełny tensor energii-pędu;
 - dlatego środek masy spoczynkowej powoli wędruje, mimo że `Σp = 0` jest zachowane
-  dokładnie. Nie jest to błąd kodu — `tests/test_conservation.py` sprawdza, że dryf
-  zgadza się z przewidywaniem kinematycznym co do rzędu wielkości;
-- brak horyzontów zdarzeń, precesji peryhelium i innych efektów OTW.
+  dokładnie. Nie jest to usterka — dryf zgadza się z przewidywaniem kinematycznym
+  co do rzędu wielkości;
+- brak horyzontów zdarzeń i precesji peryhelium.
 
-## Instalacja
+## Model ΛCDM: co to liczy
 
-```bash
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -e ".[dev]"
-pip install torch --index-url https://download.pytorch.org/whl/cu124   # GPU, opcjonalnie
-```
+Tło z parametrów Plancka 2018, widmo mocy Eisensteina i Hu (wariant bez oscylacji
+barionowych) znormalizowane przez `σ₈`, przesunięcia Zel'dovicha jako warunek
+początkowy, leapfrog KDK po `ln a`.
 
-Bez `torch` wszystko działa na CPU (NumPy), tylko wolniej.
+Ograniczenie, które trzeba wypowiedzieć wprost: **brzegi są izolowane, nie
+periodyczne**. Liczona jest odosobniona próbka materii w pustej przestrzeni, a nie
+kawałek jednorodnego wszechświata z nieskończonym ciągiem kopii. Na brzegu próbki
+brakuje przyciągania z zewnątrz, więc krawędź rusza się wolniej od środka. Za to nic
+nie zawija się przez ścianę i chmura może się swobodnie zapadać.
 
-## Użycie
-
-```bash
-python -m bone studio                                   # interfejs 3D w przeglądarce
-python -m bone run --preset galaxy --steps 2000          # bieg bez okna
-python -m bone bench --sizes 4000 100000 --backends exact mesh
-```
-
-Presety: `galaxy`, `collapse`, `relativistic`, `merger`, `fragmentation`,
-`dissipation`, `precision` oraz porównawcze presety kształtu `shape_cube`,
-`shape_cylinder`, `shape_torus`, `shape_slab`.
-
-## Kształty startowe
+## Kształty startowe (SR)
 
 Dziesięć rozkładów: `ball`, `cube`, `cylinder`, `disk`, `torus`, `sphere_shell`,
 `filament`, `gaussian`, `two_clumps`, `plummer`. Proporcje ustawiają dwa pokrętła:
 
 - **`thickness`** — przekrój poprzeczny, dla kształtów, które go mają (dysk, torus,
   włókno). To on, a nie promień, wyznacza długość fali fragmentacji (λ ≈ 3,6·σ).
-- **`flatten`** — mnożnik osi z, działa na **każdy** kształt. Kula robi się plackiem
-  albo cygarem, kostka płytą albo słupem. Rozmiar (`radius`) jest przez to
-  oddzielony od proporcji, więc zmiana kształtu nie zmienia przy okazji skali.
+- **`flatten`** — mnożnik osi z, działa na **każdy** kształt. Rozmiar (`radius`) jest
+  przez to oddzielony od proporcji, więc zmiana kształtu nie zmienia przy okazji skali.
 
-```bash
-python scripts/plot_shapes.py                    # katalog wszystkich kształtów
-python scripts/plot_shapes.py --axis xy          # rzut z góry
-python scripts/plot_shapes.py --flatten 0.25     # te same, spłaszczone
-```
+![Kształty](docs/shapes.png)
+
+Te same dziesięć kształtów po spłaszczeniu (`flatten = 0,25`) i w rzucie z góry:
+[`docs/shapes_flat.png`](docs/shapes_flat.png),
+[`docs/shapes_top.png`](docs/shapes_top.png).
 
 ### Dlaczego warunek startowy zadaje się wiriałem, a nie temperaturą
 
@@ -89,73 +102,97 @@ Ta sama dyspersja prędkości **nie jest porównywalna między kształtami**. Zm
 |---|---|---|---|---|---|---|---|---|---|---|
 | 2K/\|U\| | 1,33 | 1,27 | 1,21 | 1,03 | 0,90 | 0,93 | 0,88 | 0,70 | 0,63 | 0,57 |
 
-Rozrzut jest 2,3-krotny, a granica stabilności leży w środku tego przedziału.
-Bieg z ustaloną temperaturą miesza więc wpływ geometrii z wpływem tego, jak
-daleko od równowagi kształt wystartował — i nie pozwala rozstrzygnąć, co
-spowodowało wynik.
+Rozrzut jest 2,3-krotny, a granica stabilności leży w środku tego przedziału. Bieg
+z ustaloną temperaturą miesza więc wpływ geometrii z wpływem tego, jak daleko od
+równowagi kształt wystartował — i nie pozwala rozstrzygnąć, co spowodowało wynik.
 
-Dlatego istnieje parametr **`virial`**: podaje się docelowe 2K/|U|, a dyspersja
-jest dobierana do energii potencjalnej *tego* kształtu (bisekcja po
-relatywistycznej energii kinetycznej, |U| z podpróbki 3000 cząstek liczonej
-dokładnym O(m²)). Trafia w cel z błędem poniżej 1% dla wszystkich dziesięciu
-kształtów. `virial = 0` oddaje kontrolę suwakowi temperatury.
+Dlatego istnieje parametr **`virial`**: podaje się docelowe 2K/|U|, a dyspersja jest
+dobierana do energii potencjalnej *tego* kształtu (bisekcja po relatywistycznej energii
+kinetycznej, |U| z podpróbki liczonej dokładnie). `virial = 0` oddaje kontrolę suwakowi
+temperatury.
 
-## Dwa backendy sił
+## Dwa solwery grawitacji
 
 | | `exact` | `mesh` |
 |---|---|---|
-| metoda | dokładne O(N²) przez GEMM | siatka cząstek (PM) z FFT |
-| koszt | O(N²) | O(N + M log M) |
-| błąd siły | zero (definicja) | mierzony, zwykle 0,6–2% |
-| sensowne N | do ~5 000 interaktywnie | 10⁴–10⁶ |
+| metoda | dokładne sumowanie par | siatka cząstek (PM) z FFT |
+| koszt | `O(N²)` | `O(N + M log M)`, `M = (2·grid)³` |
+| błąd siły | zero (definicja) | mierzony: 0,3–1% na gładkiej chmurze, do 15% po powstaniu zgęstek |
+| precyzja | `f64` | `f64` na cząstkach, `f32` na siatce |
 
-`auto` wybiera `exact` do 4000 cząstek, wyżej `mesh`.
+Zmierzone na 22 rdzeniach (wydanie `release`, milisekundy na krok):
 
-Zmierzone na RTX 1000 Ada Laptop (float32, siatka 96³, chmura Plummera):
+| solver | siatka | N = 4 000 | N = 20 000 | N = 120 000 |
+|---|---|---|---|---|
+| `exact` | — | 9,5 | 408 | ~15 000 (ekstrapolacja) |
+| `mesh` | 48 | 16 | 16 | 16 |
+| `mesh` | 96 | 90 | 90 | 90 |
+| `mesh` | 192 | 1 480 | 1 480 | 1 480 |
 
-| N | `exact` | `mesh` | błąd `mesh` |
-|---|---|---|---|
-| 1 000 | 6,6 ms | 27 ms | 2,0% |
-| 4 000 | 30 ms | 25 ms | 1,2% |
-| 20 000 | 638 ms | 30 ms | 0,6% |
-| 100 000 | 15,9 s | 72 ms | — |
-
-Przy 100 000 cząstek siatka jest **220× szybsza** od dokładnego sumowania. To laptopowe
-GPU i mocno się grzeje — bezwzględne czasy wahają się między biegami nawet dwukrotnie,
-proporcje są stabilne.
+Koszt siatki nie zależy od liczby cząstek, tylko od siatki — i między siatką 64 a 192
+różni się czterdziestokrotnie. Dlatego `auto` **nie** ma stałego progu w cząstkach:
+porównuje `N²` z `(2·grid)³·log₂(2·grid)` i wybiera tańszy solver. Przy siatce 64
+granica wypada w okolicy 8 tys. cząstek, przy 192 — ponad 40 tys.
 
 ### Jak działa `mesh` i gdzie kłamie
 
 Pudło jest **zerowo dopełnione** do podwojonego rozmiaru, a jądro grawitacyjne liczone
-metodą Hockneya. Dzięki temu brzegi są **izolowane**, a nie periodyczne — chmura nie
-oddziałuje ze swoimi kopiami, co jest typowym błędem naiwnej implementacji FFT.
-Masa jest rozkładana schematem CIC, a jego wygładzanie odkręcane w przestrzeni Fouriera
-(deconvolution) — bez tej korekty błąd siły wynosił 5–9% zamiast 1–2%.
+metodą Hockneya. Dzięki temu brzegi są izolowane, a nie periodyczne — chmura nie
+oddziałuje ze swoimi kopiami, co jest typowym błędem naiwnej implementacji na FFT.
+Masa jest rozkładana schematem CIC, a jego wygładzanie odkręcane w przestrzeni
+Fouriera; bez tej korekty błąd siły wynosił 5–9% zamiast 1–2%.
 
 Dwa ograniczenia, o których warto wiedzieć:
 
 1. **PM rozdziela grawitację tylko do rozmiaru oczka.** Jeśli poprosisz o `ε` mniejsze
-   niż komórka, backend podniesie je do rozmiaru komórki i **powie o tym** w opisie
-   („ε podniesione do…"). Alternatywa — udawać, że liczy z zamówionym `ε` — dawałaby
-   ładniejszy komunikat i gorszą fizykę.
-2. **Błąd rośnie, gdy układ wytworzy strukturę drobniejszą od oczka.** Na gładkiej
-   chmurze to 0,6%, ale dysk po 400 krokach ma zgęstki i błąd sięga 4–7%. Studio
-   pokazuje wtedy podpowiedź „zagęść siatkę". Naturalnym następnym krokiem byłoby
-   dołożenie sumowania bliskiego zasięgu (P³M/TreePM); na razie tego nie ma.
+   niż komórka, solver podniesie je do rozmiaru komórki i **powie o tym**. Alternatywa
+   — udawać, że liczy z zamówionym `ε` — dawałaby ładniejszy komunikat i gorszą fizykę.
+2. **Błąd rośnie, gdy układ wytworzy strukturę drobniejszą od oczka**, i rośnie mocno.
+   Zmierzone na presecie `dissipation` (120 tys. cząstek, siatka 128, chłodzenie
+   zagęszczające materię):
+
+   | krok | błąd siły | dryf energii |
+   |---|---|---|
+   | 200 | 0,30% | 0,008 |
+   | 400 | 10,3% | 0,000 |
+   | 800 | 14,3% | 0,45 |
+   | 1000 | 14,7% | 0,40 |
+
+   Te dwie kolumny rosną razem i to nie jest zbieg okoliczności: dryf energii jest
+   skutkiem błędu siły. Późna faza tego biegu **nie jest wynikiem ilościowym** — mówi
+   „chłodzenie prowadzi do fragmentacji", a nie „fragmenty mają taką masę". Panel
+   i bieg wsadowy pokazują wtedy podpowiedź „zagęść siatkę", więc nie da się tego
+   przeoczyć. Właściwym lekarstwem byłoby dołożenie sumowania bliskiego zasięgu
+   (P³M/TreePM); tego nie ma.
+
+   Gładka chmura zachowuje się inaczej: preset `fragmentation` (120 tys. cząstek,
+   pierścień, siatka 192) trzyma 0,95% błędu siły i dryf 2·10⁻⁵.
+
+![Fragmentacja pierścienia](docs/frag_ring.png)
+
+Ten sam pierścień policzony dokładnym `O(N²)`
+([`docs/frag_ring_exact.png`](docs/frag_ring_exact.png)) daje ten sam obraz zgęstek —
+to jest sprawdzenie, że fragmentacja jest fizyką, a nie artefaktem siatki. Wpływ
+gęstości siatki i grubości przekroju: [`docs/frag_g192.png`](docs/frag_g192.png),
+[`docs/frag_thin.png`](docs/frag_thin.png).
 
 ## Diagnostyka
 
-Silnik liczy na bieżąco energię (kinetyczną relatywistyczną i potencjalną), pęd,
-moment pędu, stosunek wirialny `2T/|U|`, promień połowy masy, statystyki `γ` i `β`,
-oraz **zmierzony błąd siły** — przez porównanie z dokładnym O(N²) na losowej próbce
-cząstek. Ten ostatni jest ważny: bez niego przybliżony solver nie różni się od
-zepsutego.
+Silnik liczy na bieżąco energię (kinetyczną relatywistyczną i potencjalną), pęd, moment
+pędu, stosunek wirialny `2T/|U|`, promień połowy masy, statystyki `γ` i `β`, oraz
+**zmierzony błąd siły** — przez porównanie z dokładnym `O(N²)` na losowej próbce.
 
 Wielkość, na którą warto patrzeć, to dryf energii. Zmierzony na presecie `precision`
-(2000 cząstek, backend dokładny, 600 kroków): **3·10⁻⁶**, oscylujący wokół zera,
-a nie narastający — sygnatura poprawnego całkowania, a nie tłumienia.
+(2 tys. cząstek, solver dokładny, 200 kroków): **1,3·10⁻⁶**, oscylujący wokół zera,
+a nie narastający — sygnatura poprawnego całkowania, a nie tłumienia. W biegu
+z chłodzeniem wielkością zachowaną jest `E + energia odprowadzona`, i to jej dryf
+jest raportowany.
 
-Pęd całkowity jest zachowany do **10⁻¹²** względnie (granica float64).
+Dryf rzędu 10⁻⁶ dotyczy solvera dokładnego. Na siatce jest ograniczony przez błąd
+siły — patrz tabela wyżej.
+
+Dla ΛCDM analogiczną miarą jest reszta równania Layzera–Irvine'a; maleje z krokiem,
+co sprawdza osobny test.
 
 ## Dobór parametrów
 
@@ -163,48 +200,32 @@ Dwie rzeczy, na które łatwo się nadziać:
 
 **Masa jest masą całego układu**, nie jednej cząstki. Dlatego przesunięcie suwaka
 liczby cząstek zmienia rozdzielczość, a nie badany obiekt — energia i `β_max` zostają
-takie same od 1000 do 100 000 cząstek.
+takie same od tysiąca do 120 tys. cząstek.
 
-**Za duże `G` przy danym `c` czyni orbitę kołową niespełnialną.** Wtedy prędkości
-startowe trafiłyby na limit, układ wystartowałby z dodatnią energią i rozleciał się.
-Kod to wykrywa i ostrzega, zamiast po cichu przyciąć. Żeby dobrać `G` świadomie:
-
-```python
-from bone.config import gravity_for_beta
-G = gravity_for_beta(total_mass=4000, radius=10, c=30, beta=0.25)  # brzeg przy 0,25 c
-```
-
-## Testy
-
-```bash
-pytest -q       # 51 testów
-```
-
-Sprawdzają m.in.: zgodność `exact` z definicją siły liczoną wprost, III prawo Newtona,
-izolowane (nieperiodyczne) brzegi w `mesh`, parzystość CPU–GPU, orbitę kołową dwóch
-ciał względem rozwiązania analitycznego, zachowanie E/p/L, oraz stabilność
-relatywistyki przy absurdalnych pędach.
+**Za duże `G` przy danym `c` czyni orbitę kołową niespełnialną.** Prędkości startowe
+trafiłyby wtedy na limit, układ wystartowałby z dodatnią energią i rozleciał się. Kod
+to wykrywa i ostrzega, zamiast po cichu przyciąć. Żeby dobrać `G` świadomie, jest
+`sr::config::gravity_for_beta(total_mass, radius, c, beta)`.
 
 ## Struktura
 
 ```
-src/bone/
-  relativity.py     kinematyka SR (przepełnienio-odporna)
-  state.py          x, p, m
-  spawn.py          warunki początkowe
-  config.py         konfiguracja + schemat UI + presety
-  backends/         exact (GEMM), mesh (PM+FFT)
-  integrator.py     leapfrog KDK + adaptacyjny krok
-  diagnostics.py    wielkości zachowane, pomiar błędu siły
-  engine.py         pętla symulacji
-  io/               checkpoint, trajektoria, pakiet live
-  studio/           serwer HTTP + frontend 3D (w pakiecie)
-  cli.py            run / studio / bench
-legacy/             poprzednia wersja, zachowana do porównania
+cosmo/
+  core/          bone-core — fizyka, I/O, sesja, CLI
+    vec3, rng, fft, grid, mesh
+    sr/          relativity, state, config, presets, spawn,
+                 backends/exact, integrator, cooling, diagnostics, engine
+    lcdm/        units, cosmology, power, ics, engine, presets
+    io/          binary, checkpoint, trajectory
+    session.rs   wspólna pętla: krok, diagnostyka, zapis
+    cli.rs       bieg wsadowy
+  ui/            bone-ui — kamera, renderer, panel, odtwarzacz
+  app/           binarka BoneCosmo
 ```
 
-`legacy/` to wcześniejsza implementacja. Jej model relatywistyczny polegał na
-całkowaniu prędkości i obcinaniu jej do `0,95 c`, a grawitacja liczona była tylko
-między `k` najbliższymi sąsiadami — czyli nie była grawitacją dalekiego zasięgu.
-Nie miała też pomiaru żadnej wielkości zachowanej. Trzymana wyłącznie jako punkt
-odniesienia.
+Oba modele różnią się kinematyką i warunkami początkowymi, nie sposobem liczenia
+grawitacji — dlatego `mesh`, `grid`, `fft`, `vec3` i `rng` są wspólne. To nie jest
+dążenie do współdzielenia kodu, a obserwacja, że obie symulacje rozwiązują to samo
+równanie Poissona.
+
+Strona z opisem i odnośnikiem do wydania leży w `www/` (statyczna, nic nie liczy).

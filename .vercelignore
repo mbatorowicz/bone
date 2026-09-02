@@ -1,11 +1,7 @@
-asgi.py
-src
-tests
-legacy
-scripts
+# Na Vercelu stoi tylko strona z opisem i odnośnikiem do wydania (katalog www).
+# Symulacja liczy na komputerze użytkownika, więc kod Rusta nie ma po co jechać
+# do budowania — to nie jest ograniczanie kosztów, to brak zastosowania.
+cosmo
 docs
-.venv
-venv
-cosmo/target
-cosmo/dist
+runs
 *.png
