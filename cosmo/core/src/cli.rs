@@ -12,19 +12,21 @@ use std::path::PathBuf;
 
 use crate::lcdm;
 use crate::session::Session;
+use crate::sm;
 use crate::sr;
 
 const HELP: &str = "\
-bone — grawitacja N ciał
+bone — grawitacja N ciał i cząstki elementarne
 
     bone                          okno z panelem (domyślnie)
     bone sr      [opcje]          odosobniona chmura, kinematyka SR
     bone lcdm    [opcje]          próbka wszechświata ΛCDM (Planck 2018)
-    bone presety                  wypisz nazwy zestawów nastaw SR
+    bone sm      [opcje]          Model Standardowy: gaz cząstek elementarnych
+    bone presety                  wypisz nazwy zestawów nastaw (sr i sm)
     bone --pomoc                  ten opis
 
 Opcje wspólne:
-    --kroki N                     ile kroków policzyć (0 = bez limitu dla SR)
+    --kroki N                     ile kroków policzyć (0 = bez limitu dla SR/SM)
     --do KATALOG                  gdzie zapisać wynik
     --cicho                       nie wypisuj pomiarów w trakcie
 
@@ -32,6 +34,12 @@ Opcje trybu sr:
     --zestaw NAZWA                zestaw nastaw (patrz `bone presety`)
     --config PLIK                 konfiguracja z pliku JSON
     --czastek N                   nadpisz liczbę cząstek
+    --wznow                       wznów z checkpointu w katalogu wyjściowym
+
+Opcje trybu sm:
+    --zestaw NAZWA                plazma | para | miony | anihilacja | piony | uwiezienie
+    --config PLIK                 konfiguracja z pliku JSON
+    --czastek N                   przeskaluj mieszankę do N cząstek
     --wznow                       wznów z checkpointu w katalogu wyjściowym
 
 Opcje trybu lcdm:
@@ -49,6 +57,7 @@ pub enum Command {
     ListPresets,
     Relativistic(RelativisticJob),
     Cosmological(CosmologicalJob),
+    Particles(ParticlesJob),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -74,6 +83,15 @@ pub struct CosmologicalJob {
     pub n_grid: Option<usize>,
     pub box_size: Option<f64>,
     pub z_end: Option<f64>,
+    pub resume: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ParticlesJob {
+    pub shared: Shared,
+    pub preset: Option<String>,
+    pub config_file: Option<PathBuf>,
+    pub particles: Option<usize>,
     pub resume: bool,
 }
 
@@ -157,6 +175,20 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
                 resume,
             }))
         }
+        "sm" => {
+            reject_foreign(&[
+                ("--siatka", n_grid.is_some()),
+                ("--probka", box_size.is_some()),
+                ("--z-koniec", z_end.is_some()),
+            ])?;
+            Ok(Command::Particles(ParticlesJob {
+                shared,
+                preset,
+                config_file,
+                particles,
+                resume,
+            }))
+        }
         other => Err(format!("nieznane polecenie: {other}")),
     }
 }
@@ -188,13 +220,19 @@ pub fn execute(command: Command) -> Result<(), String> {
             Ok(())
         }
         Command::ListPresets => {
+            println!("sr:");
             for id in sr::presets::ids() {
-                println!("{id}");
+                println!("  {id}");
+            }
+            println!("sm:");
+            for id in sm::presets::ids() {
+                println!("  {id}");
             }
             Ok(())
         }
         Command::Relativistic(job) => run_relativistic(job),
         Command::Cosmological(job) => run_cosmological(job),
+        Command::Particles(job) => run_particles(job),
     }
 }
 
@@ -322,6 +360,73 @@ fn build_lcdm_config(job: &CosmologicalJob) -> Result<lcdm::RunConfig, String> {
     Ok(cfg)
 }
 
+fn run_particles(job: ParticlesJob) -> Result<(), String> {
+    let out = job.shared.out_dir.clone();
+    let mut session = if job.resume {
+        Session::resume(out, true)?
+    } else {
+        Session::start_sm(build_sm_config(&job)?, out, true)?
+    };
+
+    let limit = if job.shared.steps > 0 {
+        job.shared.steps
+    } else if job.resume {
+        2_000
+    } else {
+        build_sm_config(&job)?.run.steps.max(400)
+    };
+
+    for _ in 1..=limit {
+        let report = session.advance(1)?;
+        if let Some(hint) = session.accuracy_hint() {
+            eprintln!("uwaga: {hint}");
+        }
+        if let Some(snapshot) = session.sm_snapshot() {
+            let every = session.diagnostics_every();
+            if snapshot.step.is_multiple_of(every) && !job.shared.quiet {
+                println!(
+                    "krok {:>7}  t={:>10.3e}  N={:>6}  E={:>11.4e}  dryf={:>+9.2e}  \
+                     Q={:>+5.1}  rozpadów={}  anihilacji={}",
+                    snapshot.step,
+                    snapshot.time,
+                    snapshot.n,
+                    snapshot.total_energy,
+                    snapshot.energy_drift,
+                    snapshot.charge_thirds as f64 / 3.0,
+                    snapshot.decayed,
+                    snapshot.annihilated
+                );
+            }
+        }
+        for warning in report.warnings {
+            eprintln!("ostrzeżenie: {warning}");
+        }
+    }
+
+    finish_session(&mut session, job.shared.quiet)
+}
+
+fn build_sm_config(job: &ParticlesJob) -> Result<sm::Config, String> {
+    let mut cfg = match (&job.config_file, &job.preset) {
+        (Some(path), _) => {
+            let text = std::fs::read_to_string(path)
+                .map_err(|e| format!("nie mogę wczytać {}: {e}", path.display()))?;
+            sm::Config::from_json(&text).map_err(|e| format!("{}: {e}", path.display()))?
+        }
+        (None, Some(name)) => sm::presets::preset(name).ok_or_else(|| {
+            format!(
+                "nie znam zestawu „{name}”; dostępne: {}",
+                sm::presets::ids().join(", ")
+            )
+        })?,
+        (None, None) => sm::presets::plazma(),
+    };
+    if let Some(n) = job.particles {
+        cfg.spawn.scale_to(n);
+    }
+    Ok(cfg)
+}
+
 fn finish_session(session: &mut Session, quiet: bool) -> Result<(), String> {
     let frames = session.flush_recording()?;
     let path = session
@@ -371,6 +476,23 @@ mod tests {
         assert_eq!(job.shared.steps, 500);
         assert_eq!(job.shared.out_dir, PathBuf::from("wyniki/a"));
         assert_eq!(job.particles, Some(8_000));
+        assert!(job.shared.quiet);
+        assert!(!job.resume);
+    }
+
+    #[test]
+    fn particles_job_collects_its_options() {
+        let cmd = parse(&args(
+            "sm --zestaw miony --kroki 40 --do wyniki/sm --czastek 200 --cicho",
+        ))
+        .unwrap();
+        let Command::Particles(job) = cmd else {
+            panic!("zły tryb: {cmd:?}");
+        };
+        assert_eq!(job.preset.as_deref(), Some("miony"));
+        assert_eq!(job.shared.steps, 40);
+        assert_eq!(job.shared.out_dir, PathBuf::from("wyniki/sm"));
+        assert_eq!(job.particles, Some(200));
         assert!(job.shared.quiet);
         assert!(!job.resume);
     }
@@ -427,8 +549,11 @@ mod tests {
         let err = parse(&args("sr --siatka 32")).unwrap_err();
         assert!(err.contains("--siatka"), "{err}");
         // Opcje wspólne muszą przechodzić w obu trybach.
+        let err = parse(&args("sm --siatka 32")).unwrap_err();
+        assert!(err.contains("--siatka"), "{err}");
         assert!(parse(&args("sr --kroki 5 --do x --cicho")).is_ok());
         assert!(parse(&args("lcdm --kroki 5 --do x --cicho")).is_ok());
+        assert!(parse(&args("sm --kroki 5 --do x --cicho")).is_ok());
     }
 
     #[test]
@@ -465,8 +590,28 @@ mod tests {
     }
 
     #[test]
+    fn unknown_sm_preset_names_are_reported_with_the_list() {
+        let job = ParticlesJob {
+            shared: Shared {
+                steps: 1,
+                out_dir: PathBuf::from("x"),
+                quiet: true,
+            },
+            preset: Some("nie-ma-takiego".to_string()),
+            config_file: None,
+            particles: None,
+            resume: false,
+        };
+        let err = match build_sm_config(&job) {
+            Err(message) => message,
+            Ok(_) => panic!("nieznany zestaw został przyjęty"),
+        };
+        assert!(err.contains("plazma"), "brak listy w komunikacie: {err}");
+    }
+
+    #[test]
     fn help_text_mentions_every_command() {
-        for keyword in ["sr", "lcdm", "presety", "--kroki", "--wznow"] {
+        for keyword in ["sr", "lcdm", "sm", "presety", "--kroki", "--wznow"] {
             assert!(HELP.contains(keyword), "brak {keyword} w pomocy");
         }
     }

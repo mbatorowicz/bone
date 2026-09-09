@@ -1,12 +1,16 @@
 # Bone
 
-Grawitacja N ciał na jednym komputerze. Dwa modele, jeden silnik, jedna aplikacja
-w Ruście — okno z panelem albo bieg wsadowy z wiersza poleceń.
+Grawitacja N ciał i gaz cząstek elementarnych na jednym komputerze. Trzy modele,
+jeden silnik, jedna aplikacja w Ruście — okno z panelem albo bieg wsadowy
+z wiersza poleceń.
 
 - **`sr`** — odosobniona chmura cząstek. Grawitacja newtonowska, kinematyka
   szczególnej teorii względności, dyssypacja zależna od gęstości.
 - **`lcdm`** — próbka materii w modelu standardowym kosmologii (Planck 2018).
   Warunki początkowe z widma mocy, całkowanie po `ln a` od `z = 49` do dziś.
+- **`sm`** — Model Standardowy jako klasyczny gaz cząstek. Siedemnaście gatunków
+  elementarnych plus hadrony, cztery oddziaływania, rozpady i anihilacja.
+  To nie jest kwantowa teoria pola.
 
 Błąd solvera przybliżonego jest **mierzony i pokazywany**, nie zakładany. To jedyna
 liczba, która odróżnia przybliżenie od usterki.
@@ -16,7 +20,7 @@ liczba, która odróżnia przybliżenie od usterki.
 ```bash
 cd cosmo
 cargo build --release          # wynik: target/release/BoneCosmo
-cargo test --workspace         # 248 testów
+cargo test --workspace         # 399 testów
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
@@ -25,8 +29,10 @@ BoneCosmo                                        # okno z panelem
 BoneCosmo presety                                # nazwy zestawów nastaw SR
 BoneCosmo sr   --zestaw fragmentation --kroki 2000 --do runs/frag
 BoneCosmo lcdm --zestaw struktury --do runs/lss
+BoneCosmo sm   --zestaw plazma --kroki 400 --do runs/plazma
 BoneCosmo sr   --wznow --do runs/frag            # dalej z checkpointu
 BoneCosmo lcdm --wznow --do runs/lss             # to samo dla ΛCDM
+BoneCosmo sm   --wznow --do runs/plazma
 BoneCosmo --pomoc
 ```
 
@@ -176,6 +182,38 @@ to jest sprawdzenie, że fragmentacja jest fizyką, a nie artefaktem siatki. Wp�
 gęstości siatki i grubości przekroju: [`docs/frag_g192.png`](docs/frag_g192.png),
 [`docs/frag_thin.png`](docs/frag_thin.png).
 
+## Model cząstek (SM): co to liczy
+
+Klasyczny gaz punktów o tożsamości z Modelu Standardowego. Każda cząstka ma
+gatunek z tablicy PDG (masa, ładunek w trzecich `e`, spin, kolor, czas życia).
+Na cząstki działają cztery oddziaływania — Coulomb i grawitacja na tym samym
+solverze co modele grawitacyjne, silne i słabe pętlą po parach — a nad tym
+siedzi warstwa stochastyczna: rozpady i anihilacja.
+
+Zmienną stanu jest pęd, tak samo jak w SR, i z dodatkowego powodu: cząstka
+bezmasowa (foton, gluon, neutrino w tym przybliżeniu) nie ma prędkości jako
+zmiennej stanu — jej prędkość jest zawsze `c`.
+
+### Czego to NIE jest
+
+To nie jest kwantowa teoria pola. Brakuje stanów związanych (atom wodoru nie
+istnieje — zmiękczenie `ε` jest protezą za kwantowanie), amplitud i interferencji,
+hadronizacji oraz twardych zderzeń. Ładunek, liczba barionowa i liczby leptonowe
+są zachowywane **dokładnie** (są liczbami całkowitymi). Siły i rozpady żyją na
+skalach, które się nie spotykają: mion żyje `6,6·10¹⁷ fm/c`, a oddziaływanie
+działa na `~1 fm/c`. Zestaw nastaw wybiera jedną z tych skal.
+
+### Zestawy nastaw
+
+| zestaw | co pokazuje |
+|---|---|
+| `plazma` | gaz e⁻+p, ekranowanie Coulomba |
+| `para` | elektron i proton naprzeciw siebie |
+| `miony` | wiązka μ⁻, rozpad z dylatacją czasu |
+| `anihilacja` | chmura e⁺e⁻ → γγ |
+| `piony` | π⁰ → γγ, masa spoczynkowa w ruch |
+| `uwiezienie` | para uū, potencjał Cornella |
+
 ## Diagnostyka
 
 Silnik liczy na bieżąco energię (kinetyczną relatywistyczną i potencjalną), pęd, moment
@@ -216,6 +254,8 @@ cosmo/
     sr/          relativity, state, config, presets, spawn,
                  backends/exact, integrator, cooling, diagnostics, engine
     lcdm/        units, cosmology, power, ics, engine, presets
+    sm/          particles, units, kinematics, forces, decays, spawn,
+                 diagnostics, engine, presets
     io/          binary, checkpoint, trajectory
     session.rs   wspólna pętla: krok, diagnostyka, zapis
     cli.rs       bieg wsadowy
@@ -223,9 +263,9 @@ cosmo/
   app/           binarka BoneCosmo
 ```
 
-Oba modele różnią się kinematyką i warunkami początkowymi, nie sposobem liczenia
-grawitacji — dlatego `mesh`, `grid`, `fft`, `vec3` i `rng` są wspólne. To nie jest
-dążenie do współdzielenia kodu, a obserwacja, że obie symulacje rozwiązują to samo
-równanie Poissona.
+Modele `sr` i `lcdm` różnią się kinematyką i warunkami początkowymi, nie sposobem
+liczenia grawitacji — dlatego `mesh`, `grid`, `fft`, `vec3` i `rng` są wspólne.
+`sm` bierze z tego kinematykę relatywistyczną i solver dalekozasięgowy: Coulomb
+to to samo równanie co grawitacja, z innym ładunkiem.
 
 Strona z opisem i odnośnikiem do wydania leży w `www/` (statyczna, nic nie liczy).

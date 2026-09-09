@@ -8,6 +8,8 @@
 use eframe::egui::{self, Color32, RichText, Ui};
 
 use bone_core::lcdm;
+use bone_core::sm;
+use bone_core::sm::config::Shape;
 use bone_core::sr;
 use bone_core::sr::config::{BackendKind, Geometry};
 use bone_core::io::checkpoint;
@@ -20,6 +22,8 @@ pub struct Setup {
     pub sr_preset: &'static str,
     pub lcdm: lcdm::RunConfig,
     pub lcdm_preset: lcdm::Preset,
+    pub sm: sm::Config,
+    pub sm_preset: &'static str,
     /// Ile kroków symulacji na jedną klatkę; 0 znaczy „jeszcze wolniej".
     pub speed: u32,
     pub out_dir: String,
@@ -34,6 +38,8 @@ impl Default for Setup {
             sr_preset: "galaxy",
             lcdm: lcdm::RunConfig::structure(),
             lcdm_preset: lcdm::Preset::Structure,
+            sm: sm::presets::plazma(),
+            sm_preset: "plazma",
             speed: 1,
             out_dir: "runs/latest".to_string(),
             record: false,
@@ -83,6 +89,7 @@ pub fn side_panel(
     match setup.mode {
         Mode::Relativistic => relativistic_form(ui, setup),
         Mode::Cosmological => cosmological_form(ui, setup),
+        Mode::Particles => particles_form(ui, setup),
     }
 
     ui.add(
@@ -269,6 +276,108 @@ fn cosmological_form(ui: &mut Ui, setup: &mut Setup) {
     );
 }
 
+fn particles_form(ui: &mut Ui, setup: &mut Setup) {
+    ui.label("Zestaw nastaw");
+    ui.horizontal_wrapped(|ui| {
+        for preset in sm::presets::PRESETS {
+            if ui
+                .selectable_label(setup.sm_preset == preset.id, preset.id)
+                .clicked()
+            {
+                setup.sm = (preset.build)();
+                setup.sm_preset = preset.id;
+            }
+        }
+    });
+    ui.add_space(6.0);
+
+    egui::ComboBox::from_label("kształt")
+        .selected_text(setup.sm.spawn.shape.label())
+        .show_ui(ui, |ui| {
+            for shape in Shape::ALL {
+                ui.selectable_value(&mut setup.sm.spawn.shape, shape, shape.label());
+            }
+        });
+    egui::ComboBox::from_label("solver")
+        .selected_text(setup.sm.forces.backend.slug())
+        .show_ui(ui, |ui| {
+            for backend in BackendKind::ALL {
+                ui.selectable_value(&mut setup.sm.forces.backend, backend, backend.slug());
+            }
+        });
+
+    let mut n = setup.sm.spawn.total_count();
+    if ui
+        .add(
+            egui::Slider::new(&mut n, 2..=20_000)
+                .logarithmic(true)
+                .text("cząstek N"),
+        )
+        .changed()
+    {
+        setup.sm.spawn.scale_to(n);
+    }
+    ui.add(
+        egui::Slider::new(&mut setup.sm.spawn.radius, 0.1..=1.0e6)
+            .logarithmic(true)
+            .text("promień [fm]"),
+    );
+    match setup.sm.spawn.shape {
+        Shape::Ball => {
+            ui.add(
+                egui::Slider::new(&mut setup.sm.spawn.temperature, 0.0..=10.0)
+                    .text("T [MeV]"),
+            );
+        }
+        Shape::Beam | Shape::Pair => {
+            ui.add(
+                egui::Slider::new(&mut setup.sm.spawn.beam_energy, 0.0..=1.0e5)
+                    .text("energia wiązki [MeV]"),
+            );
+        }
+    }
+
+    ui.add_space(4.0);
+    ui.label("Oddziaływania");
+    ui.checkbox(&mut setup.sm.forces.coulomb, "Coulomb");
+    ui.checkbox(&mut setup.sm.forces.gravity, "grawitacja");
+    ui.checkbox(&mut setup.sm.forces.strong, "silne");
+    ui.checkbox(&mut setup.sm.forces.weak, "słabe");
+    ui.checkbox(&mut setup.sm.decay.enabled, "rozpady");
+    ui.checkbox(&mut setup.sm.decay.annihilation, "anihilacja");
+    ui.checkbox(&mut setup.sm.run.adaptive, "krok adaptacyjny");
+
+    ui.label(
+        RichText::new(mixture_text(&setup.sm))
+            .small()
+            .weak(),
+    );
+    ui.label(
+        RichText::new(
+            "To nie jest QFT: klasyczne trajektorie, bez atomów i hadronizacji. \
+             Siły i rozpady żyją na skalach, które się nie spotykają — zestaw nastaw \
+             wybiera jedną z nich. Jasność punktu to β = v/c.",
+        )
+        .small()
+        .weak(),
+    );
+}
+
+fn mixture_text(cfg: &sm::Config) -> String {
+    let parts: Vec<String> = cfg
+        .spawn
+        .mixture
+        .iter()
+        .filter(|i| i.count > 0)
+        .map(|i| format!("{}×{}", i.particle, i.count))
+        .collect();
+    if parts.is_empty() {
+        "mieszanka pusta".to_string()
+    } else {
+        format!("{} · {}", parts.join("  "), cfg.describe_time_scale())
+    }
+}
+
 fn setup_summary(setup: &Setup) -> String {
     match setup.mode {
         Mode::Relativistic => format!(
@@ -280,6 +389,7 @@ fn setup_summary(setup: &Setup) -> String {
             setup.sr.physics.g,
             setup.sr.physics.c
         ),
+        Mode::Particles => mixture_text(&setup.sm),
         Mode::Cosmological => {
             let c = lcdm::Cosmology::planck18();
             format!(
@@ -309,6 +419,8 @@ mod tests {
         assert!(setup.lcdm.n_grid >= 16);
         assert!(setup.sr.spawn.n_particles > 0);
         assert!(sr::presets::preset(setup.sr_preset).is_some());
+        assert!(setup.sm.spawn.total_count() > 0);
+        assert!(sm::presets::preset(setup.sm_preset).is_some());
     }
 
     #[test]

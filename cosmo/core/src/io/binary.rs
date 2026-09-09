@@ -19,6 +19,14 @@ pub fn write_f64(out: &mut impl Write, value: f64) -> io::Result<()> {
     out.write_all(&value.to_le_bytes())
 }
 
+pub fn write_u32_slice(out: &mut impl Write, values: &[u32]) -> io::Result<()> {
+    let mut buffer = Vec::with_capacity(values.len() * 4);
+    for v in values {
+        buffer.extend_from_slice(&v.to_le_bytes());
+    }
+    out.write_all(&buffer)
+}
+
 pub fn write_f64_slice(out: &mut impl Write, values: &[f64]) -> io::Result<()> {
     let mut buffer = Vec::with_capacity(values.len() * 8);
     for v in values {
@@ -51,6 +59,15 @@ pub fn read_f64(input: &mut impl Read) -> io::Result<f64> {
     let mut b = [0u8; 8];
     input.read_exact(&mut b)?;
     Ok(f64::from_le_bytes(b))
+}
+
+pub fn read_u32_vec(input: &mut impl Read, count: usize) -> io::Result<Vec<u32>> {
+    let mut bytes = vec![0u8; count * 4];
+    input.read_exact(&mut bytes)?;
+    Ok(bytes
+        .chunks_exact(4)
+        .map(|c| u32::from_le_bytes(c.try_into().expect("kawałek ma 4 bajty")))
+        .collect())
 }
 
 pub fn read_f64_vec(input: &mut impl Read, count: usize) -> io::Result<Vec<f64>> {
@@ -112,12 +129,15 @@ mod tests {
     fn slices_round_trip() {
         let f64s = vec![1.0, -2.5, 1e-300, f64::MAX];
         let f32s = vec![0.5f32, -1.25, 3.75];
+        let u32s = vec![0u32, 1, u32::MAX];
         let mut buffer = Vec::new();
         write_f64_slice(&mut buffer, &f64s).unwrap();
         write_f32_slice(&mut buffer, &f32s).unwrap();
+        write_u32_slice(&mut buffer, &u32s).unwrap();
         let mut cursor = buffer.as_slice();
         assert_eq!(read_f64_vec(&mut cursor, f64s.len()).unwrap(), f64s);
         assert_eq!(read_f32_vec(&mut cursor, f32s.len()).unwrap(), f32s);
+        assert_eq!(read_u32_vec(&mut cursor, u32s.len()).unwrap(), u32s);
     }
 
     #[test]

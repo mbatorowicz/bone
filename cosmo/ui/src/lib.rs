@@ -5,7 +5,7 @@
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela, jedyne miejsce dotykające `egui`,
-//! - [`simulation`] — dwa modele pod jednym interfejsem,
+//! - [`simulation`] — trzy modele pod jednym interfejsem,
 //! - ten moduł — pętla klatek i decyzje: kiedy startować, kiedy liczyć.
 //!
 //! Ten podział jest warunkiem testowalności, nie porządkiem dla porządku: kamera,
@@ -87,6 +87,7 @@ impl App {
                     Session::start_sr(self.setup.sr.clone(), out, record)
                 }
                 Mode::Cosmological => Session::start_lcdm(self.setup.lcdm, out, record),
+                Mode::Particles => Session::start_sm(self.setup.sm.clone(), out, record),
             }
         }));
 
@@ -140,6 +141,7 @@ impl App {
         // ziarno, geometria) są ignorowane — tym zajmuje się `Config::with_runtime_from`.
         let live_sr = self.setup.sr.clone();
         let live_dlna = self.setup.lcdm.dlna;
+        let live_sm = self.setup.sm.clone();
         let session = self
             .view
             .as_mut()
@@ -147,6 +149,7 @@ impl App {
             .expect("żywy bieg");
         session.apply_runtime_sr(&live_sr);
         session.apply_runtime_lcdm(live_dlna);
+        session.apply_runtime_sm(&live_sm);
 
         let started = Instant::now();
         let outcome = session.advance(steps);
@@ -304,7 +307,7 @@ pub fn run() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([960.0, 640.0])
-            .with_title("Bone — grawitacja N ciał"),
+            .with_title("Bone — N ciał i cząstki"),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };

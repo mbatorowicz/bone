@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::grid::center_span;
 use crate::io::{checkpoint, trajectory};
 use crate::lcdm;
+use crate::sm;
 use crate::sr;
 use crate::sr::diagnostics::Snapshot;
 use crate::vec3::Vec3;
@@ -25,6 +26,7 @@ pub struct Session {
 pub enum Run {
     Relativistic(Box<Relativistic>),
     Cosmological(Box<Cosmological>),
+    Particles(Box<Particles>),
 }
 
 pub struct Relativistic {
@@ -35,6 +37,12 @@ pub struct Relativistic {
 
 pub struct Cosmological {
     pub engine: lcdm::Engine,
+}
+
+pub struct Particles {
+    pub engine: sm::Engine,
+    pub latest: Option<sm::Snapshot>,
+    iteration: u64,
 }
 
 pub struct Report {
@@ -183,6 +191,87 @@ impl Cosmological {
     }
 }
 
+impl Particles {
+    fn start(cfg: sm::Config) -> Self {
+        let mut run = Self {
+            engine: sm::Engine::new(cfg),
+            latest: None,
+            iteration: 0,
+        };
+        run.latest = Some(run.engine.collect_diagnostics());
+        run
+    }
+
+    fn from_engine(engine: sm::Engine) -> Self {
+        let mut run = Self {
+            engine,
+            latest: None,
+            iteration: 0,
+        };
+        run.latest = Some(run.engine.collect_diagnostics());
+        run
+    }
+
+    fn advance(&mut self, steps: u32) -> Result<(), String> {
+        self.engine.advance(steps).map_err(|e| e.to_string())?;
+        self.iteration += 1;
+        let every = self.engine.cfg.run.diagnostics_every.max(1) as u64;
+        if self.iteration.is_multiple_of(every) || self.latest.is_none() {
+            self.latest = Some(self.engine.collect_diagnostics());
+        }
+        Ok(())
+    }
+
+    fn rows(&self) -> Vec<(&'static str, String)> {
+        let Some(s) = self.latest else {
+            return Vec::new();
+        };
+        let mut rows = vec![
+            ("czas [fm/c]", format!("{:>10.3e}", s.time)),
+            ("krok", format!("{:>10}", s.step)),
+            ("N", format!("{:>10}", s.n)),
+            ("K", format!("{:>10.3e}", s.kinetic)),
+            ("masa spocz.", format!("{:>10.3e}", s.rest_mass)),
+            ("U", format!("{:>10.3e}", s.potential)),
+            ("E", format!("{:>10.3e}", s.total_energy)),
+            ("dryf E", format!("{:>+10.2e}", s.energy_drift)),
+            ("β średnie", format!("{:>10.3}", s.beta_mean)),
+            ("β maks.", format!("{:>10.3}", s.beta_max)),
+            ("Q [e]", format!("{:>+10.2}", s.charge_thirds as f64 / 3.0)),
+            ("B", format!("{:>10.3}", s.baryon_thirds as f64 / 3.0)),
+            ("L", format!("{:>10}", s.lepton)),
+            ("rozpady", format!("{:>10}", s.decayed)),
+            ("anihilacje", format!("{:>10}", s.annihilated)),
+        ];
+        if let Some(gamma) = s.gamma_max {
+            rows.push(("γ maks.", format!("{:>10.3}", gamma)));
+        }
+        if s.transmutation_energy != 0.0 {
+            rows.push((
+                "skok rozpadów",
+                format!("{:>+10.3e}", s.transmutation_energy),
+            ));
+        }
+        if !s.integer_drift.is_zero() {
+            rows.push(("dryf Q/B/L", "USTERKA".to_string()));
+        }
+        rows
+    }
+
+    fn headline(&self) -> String {
+        let mut text = format!(
+            "t={:.3e} fm/c  krok={}  {}",
+            self.engine.state.time,
+            self.engine.state.step,
+            self.engine.describe()
+        );
+        if let Some(hint) = self.engine.accuracy_hint() {
+            text.push_str(&format!("  ⚠ {hint}"));
+        }
+        text
+    }
+}
+
 impl Session {
     pub fn start_sr(cfg: sr::Config, out_dir: PathBuf, record: bool) -> Result<Self, String> {
         let stride = cfg.run.point_stride;
@@ -193,6 +282,12 @@ impl Session {
     pub fn start_lcdm(cfg: lcdm::RunConfig, out_dir: PathBuf, record: bool) -> Result<Self, String> {
         let run = Run::Cosmological(Box::new(Cosmological::start(cfg)));
         Self::assemble(run, out_dir, record, 1)
+    }
+
+    pub fn start_sm(cfg: sm::Config, out_dir: PathBuf, record: bool) -> Result<Self, String> {
+        let stride = cfg.run.point_stride;
+        let run = Run::Particles(Box::new(Particles::start(cfg)));
+        Self::assemble(run, out_dir, record, stride)
     }
 
     pub fn resume(out_dir: PathBuf, record: bool) -> Result<Self, String> {
@@ -214,6 +309,17 @@ impl Session {
                     .map_err(|e| format!("wznowienie z {}: {e}", out_dir.display()))?;
                 let run = Run::Cosmological(Box::new(Cosmological::from_engine(engine)));
                 Self::assemble(run, out_dir, record, 1)
+            }
+            checkpoint::Kind::Particles => {
+                let (state, cfg) = checkpoint::load_sm(&out_dir)
+                    .map_err(|e| format!("wznowienie z {}: {e}", out_dir.display()))?;
+                let stride = cfg.run.point_stride;
+                let run = Run::Particles(Box::new(Particles::from_engine(sm::Engine::with_state(
+                    cfg,
+                    state,
+                    Vec::new(),
+                ))));
+                Self::assemble(run, out_dir, record, stride)
             }
         }
     }
@@ -243,6 +349,7 @@ impl Session {
         match &mut self.run {
             Run::Relativistic(run) => run.advance(steps)?,
             Run::Cosmological(run) => run.advance(steps)?,
+            Run::Particles(run) => run.advance(steps)?,
         }
         self.maybe_record()?;
         Ok(Report {
@@ -280,6 +387,17 @@ impl Session {
                     .push(run.engine.a, &run.engine.positions, |i| run.engine.shade(i))
                     .map_err(|e| format!("zapis klatki: {e}"))
             }
+            Run::Particles(run) => {
+                let every = run.engine.cfg.run.trajectory_every.max(1) as u64;
+                let step = run.engine.state.step;
+                if step == 0 || !step.is_multiple_of(every) {
+                    return Ok(());
+                }
+                let state = &run.engine.state;
+                recorder
+                    .push(state.time, &state.positions, |i| run.engine.shade(i))
+                    .map_err(|e| format!("zapis klatki: {e}"))
+            }
         }
     }
 
@@ -289,6 +407,7 @@ impl Session {
                 checkpoint::save(&run.engine.state, &run.engine.cfg, &self.out_dir)
             }
             Run::Cosmological(run) => checkpoint::save_lcdm(&run.engine, &self.out_dir),
+            Run::Particles(run) => checkpoint::save_sm(&run.engine.state, &run.engine.cfg, &self.out_dir),
         }
     }
 
@@ -304,7 +423,7 @@ impl Session {
 
     pub fn finished(&self) -> bool {
         match &self.run {
-            Run::Relativistic(_) => false,
+            Run::Relativistic(_) | Run::Particles(_) => false,
             Run::Cosmological(run) => run.engine.finished(),
         }
     }
@@ -313,6 +432,7 @@ impl Session {
         match &self.run {
             Run::Relativistic(run) => run.rows(),
             Run::Cosmological(run) => run.rows(),
+            Run::Particles(run) => run.rows(),
         }
     }
 
@@ -320,6 +440,7 @@ impl Session {
         match &self.run {
             Run::Relativistic(run) => run.headline(),
             Run::Cosmological(run) => run.headline(),
+            Run::Particles(run) => run.headline(),
         }
     }
 
@@ -327,6 +448,7 @@ impl Session {
         match &mut self.run {
             Run::Relativistic(run) => run.engine.take_warnings(),
             Run::Cosmological(_) => Vec::new(),
+            Run::Particles(run) => run.engine.take_warnings(),
         }
     }
 
@@ -342,10 +464,23 @@ impl Session {
         }
     }
 
+    pub fn apply_runtime_sm(&mut self, live: &sm::Config) {
+        if let Run::Particles(run) = &mut self.run {
+            run.engine.apply_runtime_config(live);
+        }
+    }
+
     pub fn sr_snapshot(&self) -> Option<&Snapshot> {
         match &self.run {
             Run::Relativistic(run) => run.latest.as_ref(),
-            Run::Cosmological(_) => None,
+            Run::Cosmological(_) | Run::Particles(_) => None,
+        }
+    }
+
+    pub fn sm_snapshot(&self) -> Option<&sm::Snapshot> {
+        match &self.run {
+            Run::Particles(run) => run.latest.as_ref(),
+            Run::Relativistic(_) | Run::Cosmological(_) => None,
         }
     }
 
@@ -353,18 +488,23 @@ impl Session {
         match &self.run {
             Run::Relativistic(run) => run.engine.accuracy_hint(),
             Run::Cosmological(_) => None,
+            Run::Particles(run) => run.engine.accuracy_hint(),
         }
     }
 
     pub fn should_check_error(&self) -> bool {
         match &self.run {
             Run::Relativistic(run) => run.engine.should_check_error(run.iteration),
-            Run::Cosmological(_) => false,
+            Run::Cosmological(_) | Run::Particles(_) => false,
         }
     }
 
     pub fn is_relativistic(&self) -> bool {
         matches!(self.run, Run::Relativistic(_))
+    }
+
+    pub fn is_particles(&self) -> bool {
+        matches!(self.run, Run::Particles(_))
     }
 
     pub fn lcdm_log_values(&self) -> Option<(u64, f64, f64, f64, f64, f64)> {
@@ -380,7 +520,7 @@ impl Session {
                     run.engine.layzer_irvine(),
                 ))
             }
-            Run::Relativistic(_) => None,
+            Run::Relativistic(_) | Run::Particles(_) => None,
         }
     }
 
@@ -388,6 +528,7 @@ impl Session {
         match &self.run {
             Run::Relativistic(run) => run.engine.state.n(),
             Run::Cosmological(run) => run.engine.n(),
+            Run::Particles(run) => run.engine.state.n(),
         }
     }
 
@@ -395,6 +536,7 @@ impl Session {
         match &self.run {
             Run::Relativistic(run) => run.engine.state.positions[index],
             Run::Cosmological(run) => run.engine.positions[index],
+            Run::Particles(run) => run.engine.state.positions[index],
         }
     }
 
@@ -405,6 +547,7 @@ impl Session {
                 .state
                 .speed_over_c(index, run.engine.cfg.physics.c) as f32,
             Run::Cosmological(run) => run.engine.shade(index),
+            Run::Particles(run) => run.engine.shade(index),
         }
     }
 
@@ -412,6 +555,7 @@ impl Session {
         match &self.run {
             Run::Relativistic(run) => center_span(&run.engine.state.positions),
             Run::Cosmological(run) => run.engine.center_span(),
+            Run::Particles(run) => center_span(&run.engine.state.positions),
         }
     }
 
@@ -427,6 +571,7 @@ impl Session {
         match &self.run {
             Run::Relativistic(run) => run.engine.cfg.run.diagnostics_every.max(1) as u64,
             Run::Cosmological(_) => LCDM_TRAJECTORY_EVERY,
+            Run::Particles(run) => run.engine.cfg.run.diagnostics_every.max(1) as u64,
         }
     }
 }
@@ -452,6 +597,13 @@ mod tests {
         }
     }
 
+    fn small_sm() -> sm::Config {
+        let mut cfg = sm::presets::para();
+        cfg.run.diagnostics_every = 1;
+        cfg.run.trajectory_every = 1;
+        cfg
+    }
+
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "bone-session-{tag}-{}-{:?}",
@@ -475,6 +627,13 @@ mod tests {
         assert!(!lcdm.rows().is_empty());
         assert!(lcdm.headline().contains("z="));
         assert_eq!(lcdm.n(), 8usize.pow(3));
+
+        let mut sm = Session::start_sm(small_sm(), temp_dir("sm-adv"), false).unwrap();
+        sm.advance(4).unwrap();
+        assert!(!sm.rows().is_empty());
+        assert!(sm.headline().contains("krok"));
+        assert!(sm.is_particles());
+        assert_eq!(sm.n(), 2);
     }
 
     #[test]
@@ -500,6 +659,19 @@ mod tests {
         let resumed = Session::resume(dir.clone(), false).unwrap();
         assert!(!resumed.is_relativistic());
         assert_eq!(resumed.lcdm_log_values().unwrap().0, step);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn sm_session_round_trips_through_checkpoint() {
+        let dir = temp_dir("sm-resume");
+        let mut session = Session::start_sm(small_sm(), dir.clone(), false).unwrap();
+        session.advance(5).unwrap();
+        let step = session.sm_snapshot().unwrap().step;
+        session.save_checkpoint().unwrap();
+        let resumed = Session::resume(dir.clone(), false).unwrap();
+        assert!(resumed.is_particles());
+        assert_eq!(resumed.sm_snapshot().unwrap().step, step);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

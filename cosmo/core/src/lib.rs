@@ -1,4 +1,4 @@
-//! Grawitacja N ciał: dwa modele na wspólnym silniku.
+//! Grawitacja N ciał i gaz cząstek elementarnych: trzy modele na wspólnym silniku.
 //!
 //! # Co tu jest
 //!
@@ -8,14 +8,17 @@
 //!   której chmura potrafi się zapaść i pofragmentować.
 //! - [`lcdm`] — próbka wszechświata z parametrami Plancka 2018. Warunki początkowe
 //!   z widma mocy i przybliżenia Zel'dovicha, całkowanie po `ln a`.
+//! - [`sm`] — Model Standardowy jako klasyczny gaz cząstek. Siedemnaście gatunków
+//!   elementarnych plus hadrony, cztery oddziaływania, rozpady i anihilacja.
+//!   To nie jest kwantowa teoria pola — granice opisu są wypisane w [`sm`].
 //!
 //! # Co jest wspólne
 //!
-//! Oba modele różnią się kinematyką i warunkami początkowymi, nie sposobem liczenia
-//! grawitacji. Wspólne są więc: [`mesh`] (solver Particle-Mesh z izolowanymi
-//! brzegami), [`grid`] (pudło siatki i wagi cloud-in-cell), [`fft`], [`vec3`]
-//! i [`rng`]. To nie jest wynik dążenia do współdzielenia kodu — to obserwacja, że
-//! obie symulacje rozwiązują to samo równanie Poissona.
+//! Modele `sr` i `lcdm` różnią się kinematyką i warunkami początkowymi, nie
+//! sposobem liczenia grawitacji. Wspólne są więc: [`mesh`] (solver Particle-Mesh
+//! z izolowanymi brzegami), [`grid`] (pudło siatki i wagi cloud-in-cell), [`fft`],
+//! [`vec3`] i [`rng`]. `sm` bierze z tego kinematykę relatywistyczną i solver
+//! dalekozasięgowy (Coulomb to to samo równanie co grawitacja, z innym ładunkiem).
 //!
 //! Warstwy wyższe: [`io`] (checkpoint i trajektoria), [`session`] (pętla biegu)
 //! i [`cli`] (bieg wsadowy) nie zawierają fizyki i nie są przez fizykę używane.
@@ -29,6 +32,7 @@ pub mod lcdm;
 pub mod mesh;
 pub mod rng;
 pub mod session;
+pub mod sm;
 pub mod sr;
 pub mod vec3;
 

@@ -14,15 +14,19 @@ use std::io::{self, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use crate::io::binary::{
-    expect_magic, read_f64, read_f64_vec, read_u64, write_f64, write_f64_slice, write_u64,
+    expect_magic, read_f64, read_f64_vec, read_u32_vec, read_u64, write_f64, write_f64_slice,
+    write_u32_slice, write_u64,
 };
 use crate::lcdm::{self, Cosmology};
+use crate::sm;
+use crate::sm::particles::Particle;
 use crate::sr::config::Config;
 use crate::sr::state::State;
 use crate::vec3::{vec3, Vec3};
 
 const MAGIC_SR: &[u8] = b"BONECKP1";
 const MAGIC_LCDM: &[u8] = b"BONELCD1";
+const MAGIC_SM: &[u8] = b"BONESMP1";
 pub const STATE_FILE: &str = "checkpoint.bin";
 pub const CONFIG_FILE: &str = "config.json";
 
@@ -31,6 +35,7 @@ pub const CONFIG_FILE: &str = "config.json";
 pub enum Kind {
     Relativistic,
     Cosmological,
+    Particles,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -99,8 +104,66 @@ pub fn kind(out_dir: impl AsRef<Path>) -> Option<Kind> {
     match &magic {
         m if m == MAGIC_SR => Some(Kind::Relativistic),
         m if m == MAGIC_LCDM => Some(Kind::Cosmological),
+        m if m == MAGIC_SM => Some(Kind::Particles),
         _ => None,
     }
+}
+
+pub fn save_sm(
+    state: &sm::State,
+    cfg: &sm::Config,
+    out_dir: impl AsRef<Path>,
+) -> io::Result<PathBuf> {
+    let dir = out_dir.as_ref();
+    fs::create_dir_all(dir)?;
+
+    let path = dir.join(STATE_FILE);
+    let mut out = BufWriter::new(File::create(&path)?);
+    out.write_all(MAGIC_SM)?;
+    write_u64(&mut out, state.n() as u64)?;
+    write_f64(&mut out, state.time)?;
+    write_u64(&mut out, state.step)?;
+    write_f64_slice(&mut out, &flatten(&state.positions))?;
+    write_f64_slice(&mut out, &flatten(&state.momenta))?;
+    let codes: Vec<u32> = state.kinds.iter().map(|p| p.pack()).collect();
+    write_u32_slice(&mut out, &codes)?;
+    drop(out);
+
+    fs::write(dir.join(CONFIG_FILE), cfg.to_json())?;
+    Ok(path)
+}
+
+pub fn load_sm_config(out_dir: impl AsRef<Path>) -> Option<sm::Config> {
+    let text = fs::read_to_string(out_dir.as_ref().join(CONFIG_FILE)).ok()?;
+    sm::Config::from_json(&text).ok()
+}
+
+pub fn load_sm(out_dir: impl AsRef<Path>) -> io::Result<(sm::State, sm::Config)> {
+    let dir = out_dir.as_ref();
+    let mut input = BufReader::new(File::open(dir.join(STATE_FILE))?);
+    expect_magic(&mut input, MAGIC_SM)?;
+    let n = read_u64(&mut input)? as usize;
+    let time = read_f64(&mut input)?;
+    let step = read_u64(&mut input)?;
+    let positions = unflatten(read_f64_vec(&mut input, n * 3)?);
+    let momenta = unflatten(read_f64_vec(&mut input, n * 3)?);
+    let kinds = read_u32_vec(&mut input, n)?
+        .into_iter()
+        .map(|code| {
+            Particle::unpack(code).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("nie znam kodu cząstki {code}"),
+                )
+            })
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+
+    let mut state = sm::State::new(positions, momenta, kinds)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    state.time = time;
+    state.step = step;
+    Ok((state, load_sm_config(dir).unwrap_or_default()))
 }
 
 pub fn save_lcdm(engine: &lcdm::Engine, out_dir: impl AsRef<Path>) -> io::Result<PathBuf> {
@@ -312,5 +375,33 @@ mod tests {
         save(&state, &cfg, &sr_dir).unwrap();
         assert_eq!(kind(&sr_dir), Some(Kind::Relativistic));
         fs::remove_dir_all(&sr_dir).ok();
+    }
+
+    fn small_sm() -> (sm::State, sm::Config) {
+        let mut cfg = sm::presets::plazma();
+        cfg.spawn.scale_to(32);
+        let mut state = sm::spawn::make_state(&cfg).state;
+        state.time = 2.5;
+        state.step = 7;
+        (state, cfg)
+    }
+
+    #[test]
+    fn sm_state_survives_round_trip_including_identity() {
+        let dir = temp_dir("ckp-sm");
+        let (state, cfg) = small_sm();
+        save_sm(&state, &cfg, &dir).unwrap();
+        assert_eq!(kind(&dir), Some(Kind::Particles));
+        let (back, back_cfg) = load_sm(&dir).unwrap();
+        assert_eq!(back.n(), state.n());
+        assert_eq!(back.time, state.time);
+        assert_eq!(back.step, state.step);
+        assert_eq!(back.kinds, state.kinds);
+        for i in 0..state.n() {
+            assert_eq!(back.positions[i], state.positions[i], "cząstka {i}");
+            assert_eq!(back.momenta[i], state.momenta[i], "cząstka {i}");
+        }
+        assert_eq!(back_cfg, cfg);
+        fs::remove_dir_all(&dir).ok();
     }
 }

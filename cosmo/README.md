@@ -1,11 +1,13 @@
 # Bone Cosmo
 
-Aplikacja desktopowa: dwa modele grawitacji N ciał na jednym komputerze.
+Aplikacja desktopowa: trzy modele na jednym komputerze.
 
 - **ΛCDM (Planck 2018)** — próbka materii, Particle-Mesh z izolowanymi brzegami
   (Hockney), warunki Zel'dovicha, całkowanie po `ln a`.
 - **SR** — odosobniona chmura, kinematyka szczególnej teorii względności,
   opcjonalne chłodzenie.
+- **SM** — Model Standardowy jako klasyczny gaz cząstek elementarnych:
+  cztery oddziaływania, rozpady, anihilacja. To nie jest QFT.
 
 Liczy na tym komputerze (FFT + wgpu do okna). Nie używa Vercela.
 
@@ -21,8 +23,10 @@ i odtwarzanie klatek działają z tego samego katalogu (`runs/latest` domyślnie
 
 ```
 BoneCosmo lcdm --zestaw struktury --do runs/lss
+BoneCosmo sm   --zestaw plazma --do runs/plazma
 BoneCosmo lcdm --wznow --do runs/lss
 BoneCosmo sr   --wznow --do runs/frag
+BoneCosmo sm   --wznow --do runs/plazma
 ```
 
 Instalator MSI (wymaga [WiX Toolset](https://wixtoolset.org/) v3):

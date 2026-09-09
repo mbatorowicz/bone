@@ -1,4 +1,4 @@
-//! Dwa modele i odtwarzanie pod jednym interfejsem panelu i renderera.
+//! Trzy modele i odtwarzanie pod jednym interfejsem panelu i renderera.
 
 use bone_core::session::Session;
 use crate::render::PointCloud;
@@ -11,15 +11,18 @@ pub enum Mode {
     Relativistic,
     /// Próbka wszechświata ΛCDM z parametrami Plancka 2018.
     Cosmological,
+    /// Klasyczny gaz cząstek Modelu Standardowego.
+    Particles,
 }
 
 impl Mode {
-    pub const ALL: [Mode; 2] = [Mode::Relativistic, Mode::Cosmological];
+    pub const ALL: [Mode; 3] = [Mode::Relativistic, Mode::Cosmological, Mode::Particles];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Relativistic => "chmura SR",
             Self::Cosmological => "ΛCDM",
+            Self::Particles => "cząstki SM",
         }
     }
 
@@ -27,6 +30,7 @@ impl Mode {
         match self {
             Self::Relativistic => "grawitacja newtonowska, kinematyka SR — układ izolowany",
             Self::Cosmological => "ΛCDM · Planck 2018 · PM izolowany (Hockney)",
+            Self::Particles => "Model Standardowy · klasyczne trajektorie · 4 oddziaływania",
         }
     }
 }
@@ -125,6 +129,7 @@ impl PointCloud for Replay {
 mod tests {
     use super::*;
     use bone_core::lcdm;
+    use bone_core::sm;
     use bone_core::sr;
     use std::path::PathBuf;
 
@@ -141,6 +146,10 @@ mod tests {
             pm_grid: 16,
             ..lcdm::RunConfig::structure()
         }
+    }
+
+    fn small_sm() -> sm::Config {
+        sm::presets::para()
     }
 
     fn scratch(tag: &str) -> PathBuf {
@@ -181,6 +190,16 @@ mod tests {
     }
 
     #[test]
+    fn particles_view_reports_census() {
+        let mut view = View::Live(
+            Session::start_sm(small_sm(), scratch("sm"), false).unwrap(),
+        );
+        view.as_live_mut().unwrap().advance(3).unwrap();
+        assert!(view.headline().contains("krok"));
+        assert_eq!(view.cloud().len(), 2);
+    }
+
+    #[test]
     fn live_galaxy_paints_visible_pixels() {
         use crate::camera::Camera;
         use crate::render::render;
@@ -213,6 +232,11 @@ mod tests {
         for i in 0..lcdm.len() {
             let s = PointCloud::shade(&lcdm, i);
             assert!((0.0..=1.0).contains(&s), "ΛCDM: cząstka {i} ma odcień {s}");
+        }
+        let sm = Session::start_sm(small_sm(), scratch("shade-sm"), false).unwrap();
+        for i in 0..sm.len() {
+            let s = PointCloud::shade(&sm, i);
+            assert!((0.0..=1.0).contains(&s), "SM: cząstka {i} ma odcień {s}");
         }
     }
 }
