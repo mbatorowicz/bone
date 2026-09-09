@@ -99,7 +99,16 @@ pub fn side_panel(
 
     match setup.mode {
         Mode::Relativistic => relativistic_form(ui, setup),
-        Mode::Cosmological => cosmological_form(ui, setup),
+        Mode::Cosmological => {
+            cosmological_form(ui, setup);
+            let chart = view
+                .as_ref()
+                .and_then(|v| v.lcdm_growth())
+                .unwrap_or_else(|| {
+                    lcdm::growth::Chart::theoretical(lcdm::Cosmology::planck18(), setup.lcdm.z_start)
+                });
+            charts::cosmology_charts(ui, &chart);
+        }
         Mode::Particles => particles_form(ui, setup),
         Mode::Atoms => atoms_form(ui, setup),
     }

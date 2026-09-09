@@ -14,6 +14,7 @@
 //! - [`power`] — widmo mocy `P(k)` znormalizowane przez `σ₈`,
 //! - [`ics`] — gaussowskie pole gęstości i przesunięcia Zel'dovicha,
 //! - [`engine`] — leapfrog KDK po `ln a` na siatce PM,
+//! - [`growth`] — porównanie `δ_rms(a) / D(a)`,
 //! - [`presets`] — nazwane zestawy nastaw (CLI i panel).
 //!
 //! Solver grawitacji jest wspólny z laboratorium N-ciał ([`crate::mesh`]) — te dwa
@@ -22,6 +23,7 @@
 
 pub mod cosmology;
 pub mod engine;
+pub mod growth;
 pub mod ics;
 pub mod power;
 pub mod presets;

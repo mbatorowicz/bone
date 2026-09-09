@@ -177,6 +177,9 @@ impl Cosmological {
                 "residuum LI",
                 format!("{:>+10.2e}", self.engine.layzer_irvine()),
             ),
+            ("σ(δ)", format!("{:>10.4}", self.engine.delta_rms())),
+            ("D(a)", format!("{:>10.4}", self.engine.growth_factor())),
+            ("σ(δ)/D", format!("{:>10.3}", self.engine.growth_ratio())),
             (
                 "σ(δ) start",
                 format!("{:>10.3}", self.engine.initial_contrast),
@@ -556,6 +559,13 @@ impl Session {
             Run::Cosmological(run) => run.rows(),
             Run::Particles(run) => run.rows(),
             Run::Atoms(run) => run.rows(),
+        }
+    }
+
+    pub fn lcdm_growth_chart(&self) -> Option<lcdm::growth::Chart> {
+        match &self.run {
+            Run::Cosmological(run) => Some(run.engine.growth_chart()),
+            _ => None,
         }
     }
 

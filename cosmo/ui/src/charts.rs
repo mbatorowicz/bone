@@ -1,11 +1,12 @@
-//! Wykresy funkcji falowych i poziomów energii — czysta geometria egui.
+//! Wykresy funkcji falowych, poziomów energii i wzrostu kosmologicznego.
 //!
-//! Panel nie liczy fizyki. Dostaje gotowe serie z `bone_core::qm::plot` i rysuje
-//! je. Dzięki temu ten sam zestaw punktów można sprawdzić testem bez okna.
+//! Panel nie liczy fizyki. Dostaje gotowe serie z `bone_core` i rysuje je.
+//! Dzięki temu ten sam zestaw punktów można sprawdzić testem bez okna.
 
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, Ui};
 
-use bone_core::qm::plot::{Charts, Level, Series};
+use bone_core::lcdm::growth::Chart as GrowthChart;
+use bone_core::qm::plot::{Charts, Level};
 
 pub fn atom_charts(ui: &mut Ui, charts: &Charts) {
     ui.add_space(6.0);
@@ -13,11 +14,29 @@ pub fn atom_charts(ui: &mut Ui, charts: &Charts) {
     ui.label(egui::RichText::new(charts.formula).small().weak().italics());
     ui.add_space(4.0);
     ui.label(egui::RichText::new("P(r) = r² R²").small());
-    line_plot(ui, &charts.probability, 72.0, Color32::from_rgb(120, 180, 220));
+    line_plot(
+        ui,
+        &charts.probability.xs,
+        &charts.probability.ys,
+        72.0,
+        Color32::from_rgb(120, 180, 220),
+    );
     ui.label(egui::RichText::new("Rₙₗ(r)").small());
-    line_plot(ui, &charts.radial, 56.0, Color32::from_rgb(220, 180, 90));
+    line_plot(
+        ui,
+        &charts.radial.xs,
+        &charts.radial.ys,
+        56.0,
+        Color32::from_rgb(220, 180, 90),
+    );
     ui.label(egui::RichText::new("|Yₗₘ(θ)|²  w płaszczyźnie xz").small());
-    line_plot(ui, &charts.angular, 48.0, Color32::from_rgb(160, 200, 140));
+    line_plot(
+        ui,
+        &charts.angular.xs,
+        &charts.angular.ys,
+        48.0,
+        Color32::from_rgb(160, 200, 140),
+    );
     if !charts.levels.is_empty() {
         ui.label(egui::RichText::new("poziomy Eₙ").small());
         energy_ladder(ui, &charts.levels, 80.0);
@@ -38,15 +57,57 @@ pub fn atom_charts(ui: &mut Ui, charts: &Charts) {
     }
 }
 
-fn line_plot(ui: &mut Ui, series: &Series, height: f32, color: Color32) {
-    if series.xs.len() < 2 || series.xs.len() != series.ys.len() {
+pub fn cosmology_charts(ui: &mut Ui, chart: &GrowthChart) {
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new("Wzrost").small().strong());
+    ui.label(
+        egui::RichText::new("D(a)/D(1)  ·  tło Planck 2018")
+            .small()
+            .weak(),
+    );
+    line_plot(
+        ui,
+        &chart.growth.xs,
+        &chart.growth.ys,
+        56.0,
+        Color32::from_rgb(120, 180, 220),
+    );
+    if chart.ratio.xs.len() >= 2 {
+        ui.label(
+            egui::RichText::new("δ_rms / D(a)  ·  stałe w reżimie liniowym")
+                .small()
+                .weak(),
+        );
+        line_plot(
+            ui,
+            &chart.ratio.xs,
+            &chart.ratio.ys,
+            56.0,
+            Color32::from_rgb(220, 180, 90),
+        );
+        ui.label(
+            egui::RichText::new(format!("teraz  {:.3}", chart.ratio_now))
+                .small()
+                .monospace(),
+        );
+    } else {
+        ui.label(
+            egui::RichText::new("stosunek pojawi się po uruchomieniu")
+                .small()
+                .weak(),
+        );
+    }
+}
+
+fn line_plot(ui: &mut Ui, xs: &[f64], ys: &[f64], height: f32, color: Color32) {
+    if xs.len() < 2 || xs.len() != ys.len() {
         return;
     }
     let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 2.0, Color32::from_rgb(12, 16, 24));
-    let (x0, x1) = min_max(&series.xs);
-    let (y0, y1) = min_max(&series.ys);
+    let (x0, x1) = min_max(xs);
+    let (y0, y1) = min_max(ys);
     let dx = (x1 - x0).max(1e-12);
     let dy = (y1 - y0).max(1e-12);
     let pad = 4.0;
@@ -62,8 +123,8 @@ fn line_plot(ui: &mut Ui, series: &Series, height: f32, color: Color32) {
             Stroke::new(1.0, Color32::from_rgb(40, 48, 60)),
         );
     }
-    let mut pts: Vec<Pos2> = Vec::with_capacity(series.xs.len());
-    for (x, y) in series.xs.iter().zip(series.ys.iter()) {
+    let mut pts: Vec<Pos2> = Vec::with_capacity(xs.len());
+    for (x, y) in xs.iter().zip(ys.iter()) {
         let u = ((*x - x0) / dx) as f32;
         let v = ((*y - y0) / dy) as f32;
         pts.push(Pos2::new(

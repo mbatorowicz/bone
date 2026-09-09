@@ -55,7 +55,7 @@ impl Mode {
             Self::Cosmological => ModelCard {
                 equation: "p = a² ẋ, tło Planck 2018",
                 scope: "CDM, bez gazu · brzegi periodyczne",
-                comparison: "residuum Layzera–Irvine’a",
+                comparison: "δ_rms / D(a)",
                 not_this: "bez oscylacji barionowych, pudło ≪ 150 Mpc/h",
             },
             Self::Particles => ModelCard {
@@ -101,6 +101,13 @@ impl View {
         match self {
             Self::Live(session) => session.headline(),
             Self::Replay(replay) => replay.headline(),
+        }
+    }
+
+    pub fn lcdm_growth(&self) -> Option<bone_core::lcdm::growth::Chart> {
+        match self {
+            Self::Live(session) => session.lcdm_growth_chart(),
+            Self::Replay(_) => None,
         }
     }
 
@@ -244,6 +251,7 @@ mod tests {
         let cosmo = Mode::Cosmological.card();
         assert!(cosmo.equation.contains("Planck 2018"));
         assert!(cosmo.scope.contains("periodyczne"));
+        assert!(cosmo.comparison.contains("D(a)"));
         assert!(cosmo.not_this.contains("barionow"));
         assert!(!cosmo.not_this.contains("izolowane"));
         let particles = Mode::Particles.card();
@@ -273,6 +281,14 @@ mod tests {
         view.as_live_mut().unwrap().advance(3).unwrap();
         assert!(view.headline().contains("z="));
         assert_eq!(view.cloud().len(), 12usize.pow(3));
+        let rows = view.rows();
+        assert!(
+            rows.iter().any(|(name, _)| *name == "σ(δ)/D"),
+            "brak ilorazu wzrostu w tabeli: {rows:?}"
+        );
+        let chart = view.lcdm_growth().expect("wykres wzrostu");
+        assert!(chart.ratio.xs.len() >= 2);
+        assert!(chart.ratio_now.is_finite() && chart.ratio_now > 0.0);
     }
 
     #[test]

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::grid::center_span;
 use crate::lcdm::cosmology::Cosmology;
+use crate::lcdm::growth::{self, Sample};
 use crate::lcdm::ics::make_initial_state;
 use crate::lcdm::units::G;
 use crate::mesh::{Boundary, Mesh};
@@ -159,6 +160,8 @@ pub struct Engine {
     masses: Vec<f64>,
     mesh: Mesh,
     li: LayzerIrvine,
+    /// Próbki `δ_rms / D` wzdłuż biegu — wykres w panelu, nic więcej.
+    growth_log: Vec<Sample>,
 }
 
 impl Engine {
@@ -182,10 +185,12 @@ impl Engine {
             masses: vec![ic.mass; n],
             mesh,
             li: LayzerIrvine::default(),
+            growth_log: Vec::new(),
         };
         engine.wrap_positions();
         engine.refresh_forces();
         engine.li = LayzerIrvine::start(engine.energies());
+        engine.record_growth();
         engine
     }
 
@@ -215,10 +220,12 @@ impl Engine {
             masses: vec![saved.mass; n],
             mesh,
             li: LayzerIrvine::default(),
+            growth_log: Vec::new(),
         };
         engine.wrap_positions();
         engine.refresh_forces();
         engine.li = LayzerIrvine::start(engine.energies());
+        engine.record_growth();
         engine
     }
 
@@ -284,6 +291,12 @@ impl Engine {
         self.li.accumulate(self.energies(), a1, a2);
         self.a = a2;
         self.step += 1;
+        self.record_growth();
+    }
+
+    fn record_growth(&mut self) {
+        self.growth_log
+            .push(Sample::new(self.a, self.delta_rms(), self.growth_factor()));
     }
 
     /// Energia kinetyczna i potencjalna w zmiennych komowych.
@@ -314,6 +327,32 @@ impl Engine {
     /// Residuum równania Layzera–Irvine'a, znormalizowane do skali energii.
     pub fn layzer_irvine(&self) -> f64 {
         self.li.residual(self.energies())
+    }
+
+    /// `σ(δ)` z gęstości CIC na siatce PM — ta sama definicja co przy IC, inna siatka.
+    pub fn delta_rms(&self) -> f64 {
+        self.mesh
+            .delta_rms(self.cosmology.mean_matter_density())
+    }
+
+    /// `D(a)/D(1)` tła w bieżącej skali.
+    pub fn growth_factor(&self) -> f64 {
+        self.cosmology.growth(self.a)
+    }
+
+    /// `σ(δ) / D(a)`. W reżimie liniowym stałe.
+    pub fn growth_ratio(&self) -> f64 {
+        self.delta_rms() / self.growth_factor().max(1e-30)
+    }
+
+    pub fn growth_chart(&self) -> growth::Chart {
+        growth::Chart::from_run(
+            self.cosmology,
+            self.cfg.z_start,
+            &self.growth_log,
+            self.a,
+            self.delta_rms(),
+        )
     }
 
     /// Kontrast gęstości `1 + δ` w miejscu cząstki, spłaszczony do przedziału [0, 1].
@@ -616,5 +655,54 @@ mod tests {
         assert!(text.contains("16³"), "{text}");
         assert!(text.contains("periodyczny"), "{text}");
         assert!(!text.contains("izolowany"), "{text}");
+    }
+
+    /// We wczesnej fazie (z=49 → z≳20, małe δ) `σ(δ)/D` ma zostać stałe.
+    /// Jeśli iloraz dryfuje, albo D(a) jest złe, albo siły nie rosną jak tło.
+    #[test]
+    fn linear_growth_ratio_stays_flat_at_high_redshift() {
+        let mut eng = Engine::new(
+            Cosmology::planck18(),
+            RunConfig {
+                box_size: 32.0,
+                n_grid: 16,
+                pm_grid: 16,
+                z_start: 49.0,
+                z_end: 0.0,
+                dlna: 0.02,
+                seed: 3,
+            },
+        );
+        let start = eng.growth_ratio();
+        let start_delta = eng.delta_rms();
+        assert!(start.is_finite() && start > 0.0, "iloraz startowy = {start}");
+        assert!(
+            start_delta < 0.4,
+            "σ(δ) = {start_delta} przy z=49 — to już nie jest reżim liniowy"
+        );
+
+        let mut ratios = vec![start];
+        while eng.redshift() > 20.0 {
+            eng.advance();
+            ratios.push(eng.growth_ratio());
+        }
+        assert!(ratios.len() >= 4, "za mało próbek: {}", ratios.len());
+        assert!(
+            eng.delta_rms() > start_delta,
+            "σ(δ) nie urosło: {} → {}",
+            start_delta,
+            eng.delta_rms()
+        );
+
+        let mean = ratios.iter().sum::<f64>() / ratios.len() as f64;
+        let worst = ratios
+            .iter()
+            .map(|r| (r / mean - 1.0).abs())
+            .fold(0.0, f64::max);
+        assert!(
+            worst < 0.05,
+            "σ(δ)/D zbiegło o {:.1}% (średnia {mean}, próbki {ratios:?})",
+            100.0 * worst
+        );
     }
 }

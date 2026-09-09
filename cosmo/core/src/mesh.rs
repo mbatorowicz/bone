@@ -462,6 +462,28 @@ impl Mesh {
         rho / (box_.cell_volume() * mean_density.max(1e-30)) - 1.0
     }
 
+    /// `σ(δ)` na siatce: RMS kontrastu `ρ/ρ̄ − 1`.
+    ///
+    /// Dla periodycznego ΛCDM to zmierzona amplituda zaburzeń — ta, która
+    /// w reżimie liniowym rośnie jak `D(a)`. Średnia jest odejmowana, żeby
+    /// stałe przesunięcie tła (jedna komórka zaokrąglenia) nie wchodziło w RMS.
+    pub fn delta_rms(&self, mean_density: f64) -> f64 {
+        let Some(box_) = self.box_ else {
+            return 0.0;
+        };
+        let mean_mass = box_.cell_volume() * mean_density.max(1e-30);
+        let n = self.density.len().max(1) as f64;
+        let mut sum = 0.0;
+        let mut sum2 = 0.0;
+        for &mass in &self.density {
+            let delta = mass as f64 / mean_mass - 1.0;
+            sum += delta;
+            sum2 += delta * delta;
+        }
+        let mean = sum / n;
+        (sum2 / n - mean * mean).max(0.0).sqrt()
+    }
+
     /// Energia grawitacyjna pola `½ Σ m_cell Φ_cell`.
     ///
     /// Dla periodycznego Poissona to jest definicja: `k = 0` wyzerowane, więc
@@ -892,5 +914,17 @@ mod tests {
             (total - 1.0).abs() < 1e-5,
             "masa zgubiona przy ścianie: {total}"
         );
+    }
+
+    #[test]
+    fn periodic_uniform_mass_has_zero_contrast_rms() {
+        let ng = 16;
+        let length = 16.0;
+        let mut mesh = Mesh::with_boundary(ng, 0.0, Boundary::Periodic);
+        mesh.pin_cube(ZERO, length);
+        mesh.density.fill(1.0);
+        let mean = (ng * ng * ng) as f64 / length.powi(3);
+        let rms = mesh.delta_rms(mean);
+        assert!(rms < 1e-6, "σ(δ) jednorodnej siatki = {rms}");
     }
 }
