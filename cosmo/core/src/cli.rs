@@ -53,7 +53,7 @@ Opcje trybu qm:
 Opcje trybu lcdm:
     --zestaw NAZWA                liniowy | struktury | struktury64
     --siatka N                    bok siatki warunków początkowych
-    --probka L                    bok próbki w Mpc/h
+    --probka L                    bok próbki w Mpc/h (najwyżej 80; P(k) bez BAO)
     --z-koniec Z                  przesunięcie ku czerwieni, na którym skończyć
     --wznow                       wznów z checkpointu w katalogu wyjściowym
 ";
@@ -389,7 +389,7 @@ fn build_lcdm_config(job: &CosmologicalJob) -> Result<lcdm::RunConfig, String> {
         cfg.pm_grid = cfg.n_grid.min(64);
     }
     if let Some(l) = job.box_size {
-        cfg.box_size = l;
+        cfg.box_size = l.clamp(1.0, lcdm::MAX_BOX_MPC_H);
     }
     if let Some(z) = job.z_end {
         cfg.z_end = z;

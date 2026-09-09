@@ -281,15 +281,18 @@ fn cosmological_form(ui: &mut Ui, setup: &mut Setup) {
     ui.add_space(6.0);
 
     ui.add(egui::Slider::new(&mut setup.lcdm.n_grid, 16..=64).text("siatka N³"));
-    ui.add(egui::Slider::new(&mut setup.lcdm.box_size, 20.0..=400.0).text("próbka [Mpc/h]"));
+    ui.add(
+        egui::Slider::new(&mut setup.lcdm.box_size, 20.0..=lcdm::MAX_BOX_MPC_H)
+            .text("próbka [Mpc/h]"),
+    );
     ui.add(egui::Slider::new(&mut setup.lcdm.z_start, 20.0..=120.0).text("z startowe"));
     ui.add(
         egui::Slider::new(&mut setup.lcdm.dlna, 0.0002..=0.01)
             .logarithmic(true)
             .text("Δln a"),
     );
-    // Siatka PM powyżej 64³ przestaje się opłacać: koszt rośnie jak (2·N)³·log N,
-    // a rozdzielczość ogranicza i tak liczba cząstek.
+    // Siatka PM powyżej 64³ przestaje się opłacać: koszt periodycznego FFT
+    // rośnie jak N³·log N, a rozdzielczość ogranicza i tak liczba cząstek.
     setup.lcdm.pm_grid = setup.lcdm.n_grid.min(64);
 }
 

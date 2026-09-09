@@ -37,7 +37,7 @@ impl Mode {
     pub fn subtitle(self) -> &'static str {
         match self {
             Self::Relativistic => "Newton + kinematyka SR",
-            Self::Cosmological => "ΛCDM · PM izolowany",
+            Self::Cosmological => "ΛCDM · PM periodyczny",
             Self::Particles => "kinematyka i rozpady PDG",
             Self::Atoms => "Schrödinger · |ψ|²",
         }
@@ -54,9 +54,9 @@ impl Mode {
             },
             Self::Cosmological => ModelCard {
                 equation: "p = a² ẋ, tło Planck 2018",
-                scope: "CDM, bez gazu",
+                scope: "CDM, bez gazu · brzegi periodyczne",
                 comparison: "residuum Layzera–Irvine’a",
-                not_this: "na razie brzegi izolowane",
+                not_this: "bez oscylacji barionowych, pudło ≪ 150 Mpc/h",
             },
             Self::Particles => ModelCard {
                 equation: "klasyczny gaz + losowe rozpady PDG",
@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(Mode::Particles.label(), "Cząstki");
         assert_eq!(Mode::Atoms.label(), "Atomy");
         assert_eq!(Mode::Relativistic.subtitle(), "Newton + kinematyka SR");
-        assert_eq!(Mode::Cosmological.subtitle(), "ΛCDM · PM izolowany");
+        assert_eq!(Mode::Cosmological.subtitle(), "ΛCDM · PM periodyczny");
         assert_eq!(Mode::Particles.subtitle(), "kinematyka i rozpady PDG");
         assert_eq!(Mode::Atoms.subtitle(), "Schrödinger · |ψ|²");
     }
@@ -243,7 +243,9 @@ mod tests {
         assert!(nbody.not_this.contains("fale grawitacyjne"));
         let cosmo = Mode::Cosmological.card();
         assert!(cosmo.equation.contains("Planck 2018"));
-        assert!(cosmo.not_this.contains("izolowane"));
+        assert!(cosmo.scope.contains("periodyczne"));
+        assert!(cosmo.not_this.contains("barionow"));
+        assert!(!cosmo.not_this.contains("izolowane"));
         let particles = Mode::Particles.card();
         assert!(particles.scope.contains("nie QFT"));
         assert!(particles.not_this.contains("hadronizacja"));

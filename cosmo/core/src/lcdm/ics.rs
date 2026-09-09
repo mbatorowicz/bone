@@ -210,7 +210,7 @@ pub fn make_initial_state(
                     (iy as f64 + 0.5) * h_cell,
                     (iz as f64 + 0.5) * h_cell,
                 );
-                positions.push(lattice + field.psi[idx]);
+                positions.push(wrap_into_box(lattice + field.psi[idx], box_size));
                 momenta.push(field.psi[idx] * momentum_scale);
             }
         }
@@ -245,9 +245,25 @@ fn wave_number(i: usize, ng: usize) -> f64 {
     }
 }
 
+fn wrap_into_box(p: Vec3, length: f64) -> Vec3 {
+    vec3(
+        p.x.rem_euclid(length),
+        p.y.rem_euclid(length),
+        p.z.rem_euclid(length),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn min_image(delta: Vec3, length: f64) -> Vec3 {
+        vec3(
+            delta.x - length * (delta.x / length).round(),
+            delta.y - length * (delta.y / length).round(),
+            delta.z - length * (delta.z / length).round(),
+        )
+    }
 
     fn field(ng: usize, box_size: f64, seed: u64) -> LinearField {
         let cosmology = Cosmology::planck18();
@@ -281,6 +297,14 @@ mod tests {
         assert!(st.mass > 0.0);
         assert!(st.positions.iter().all(|p| p.is_finite()));
         assert!(st.momenta.iter().all(|p| p.is_finite()));
+        assert!(st.positions.iter().all(|p| {
+            p.x >= 0.0
+                && p.x < 100.0
+                && p.y >= 0.0
+                && p.y < 100.0
+                && p.z >= 0.0
+                && p.z < 100.0
+        }));
     }
 
     /// Masa całkowita musi odtwarzać `Ω_m ρ_kryt V`. Gdyby nie odtwarzała, cała
@@ -394,7 +418,7 @@ mod tests {
                 (iy as f64 + 0.5) * h_cell,
                 (iz as f64 + 0.5) * h_cell,
             );
-            let psi = *p - lattice;
+            let psi = min_image(*p - lattice, 100.0);
             if psi.norm() < 1e-9 {
                 continue;
             }
@@ -429,7 +453,7 @@ mod tests {
                     (iy as f64 + 0.5) * h_cell,
                     (iz as f64 + 0.5) * h_cell,
                 );
-                (*p - lattice).norm() / h_cell
+                min_image(*p - lattice, box_size).norm() / h_cell
             })
             .fold(0.0f64, f64::max);
         assert!(worst < 1.0, "największe przesunięcie {worst} oczka");

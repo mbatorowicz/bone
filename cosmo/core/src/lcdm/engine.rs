@@ -1,4 +1,4 @@
-//! Silnik ΛCDM: leapfrog KDK po `ln a`, siły z tego samego solvera PM co tryb SR.
+//! Silnik ΛCDM: leapfrog KDK po `ln a`, siły z periodycznego solvera PM.
 //!
 //! Krok jest równomierny w `ln a`, nie w czasie. To nie jest wygoda zapisu: czynniki
 //! dryfu i kopnięcia są całkami po `a`, więc w tej zmiennej całkowanie jest dokładne
@@ -7,11 +7,11 @@
 //!
 //! # Co to jest, a co nie jest
 //!
-//! Solver PM ma brzegi IZOLOWANE (metoda Hockneya), a nie periodyczne. Symulowana jest
-//! więc odosobniona próbka materii w pustej przestrzeni, a nie kawałek jednorodnego
-//! wszechświata z nieskończonym ciągiem kopii. Konsekwencja jest rzeczywista: na brzegu
-//! próbki brakuje przyciągania z zewnątrz, więc jej krawędź jest wolniejsza od środka.
-//! Za to nic nie zawija się przez ścianę i chmura może swobodnie zapadać się i rozszerzać.
+//! Solver PM ma brzegi PERIODYCZNE: wycinek wszechświata z nieskończonym ciągiem kopii,
+//! pudło komowe stałe, pozycje zawijane przez ścianę. To nie jest odosobniona kula
+//! w pustce. Widmo początkowe jest wariantem Eisensteina–Hu bez oscylacji barionowych,
+//! więc bok pudła jest ograniczony do 80 Mpc/h — większe pudło udawałoby BAO, których
+//! w `P(k)` nie ma.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,11 +19,12 @@ use crate::grid::center_span;
 use crate::lcdm::cosmology::Cosmology;
 use crate::lcdm::ics::make_initial_state;
 use crate::lcdm::units::G;
-use crate::mesh::Mesh;
-use crate::vec3::{Vec3, ZERO};
+use crate::mesh::{Boundary, Mesh};
+use crate::vec3::{vec3, Vec3, ZERO};
 
-/// Zapas pudła siatki ponad rozciągłość chmury, jako jej ułamek.
-const BOX_MARGIN: f64 = 0.15;
+/// P(k) jest wariantem Eisensteina–Hu bez oscylacji barionowych. Pudło większe
+/// niż ~80 Mpc/h udawałoby, że widać BAO, których w widmie nie ma.
+pub const MAX_BOX_MPC_H: f64 = 80.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunConfig {
@@ -87,9 +88,10 @@ impl RunConfig {
     }
 
     /// Duża próbka: skale pozostają liniowe, więc widać sam wzrost amplitudy.
+    /// Bok 80 Mpc/h to górny limit widma bez BAO, nie „im większe, tym lepiej".
     pub fn linear_growth() -> Self {
         Self {
-            box_size: 200.0,
+            box_size: MAX_BOX_MPC_H,
             n_grid: 32,
             pm_grid: 32,
             z_start: 49.0,
@@ -101,6 +103,10 @@ impl RunConfig {
 
     pub fn n_particles(&self) -> usize {
         self.n_grid.pow(3)
+    }
+
+    fn clamp_box(&mut self) {
+        self.box_size = self.box_size.clamp(1.0, MAX_BOX_MPC_H);
     }
 }
 
@@ -126,6 +132,16 @@ pub fn adaptive_dlna(z: f64, base: f64) -> f64 {
     (base * scale).clamp(0.00008, 0.05)
 }
 
+/// Zawinięcie komowe na torus `[0, L)`. `rem_euclid` zostawia ujemne składowe
+/// po właściwej stronie pudła, a nie lustrzanie.
+fn wrap_into_box(p: Vec3, length: f64) -> Vec3 {
+    vec3(
+        p.x.rem_euclid(length),
+        p.y.rem_euclid(length),
+        p.z.rem_euclid(length),
+    )
+}
+
 pub struct Engine {
     pub cosmology: Cosmology,
     pub cfg: RunConfig,
@@ -146,9 +162,12 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(cosmology: Cosmology, cfg: RunConfig) -> Self {
+    pub fn new(cosmology: Cosmology, mut cfg: RunConfig) -> Self {
+        cfg.clamp_box();
         let ic = make_initial_state(cosmology, cfg.box_size, cfg.n_grid, cfg.z_start, cfg.seed);
         let n = ic.positions.len();
+        let mut mesh = Mesh::with_boundary(cfg.pm_grid, 0.0, Boundary::Periodic);
+        mesh.pin_cube(ZERO, ic.box_size);
         let mut engine = Self {
             cosmology,
             cfg,
@@ -161,9 +180,10 @@ impl Engine {
             step: 0,
             initial_contrast: ic.delta_rms,
             masses: vec![ic.mass; n],
-            mesh: Mesh::new(cfg.pm_grid, BOX_MARGIN),
+            mesh,
             li: LayzerIrvine::default(),
         };
+        engine.wrap_positions();
         engine.refresh_forces();
         engine.li = LayzerIrvine::start(engine.energies());
         engine
@@ -176,21 +196,27 @@ impl Engine {
     /// wznowieniu mierzy jakość *dalszego* całkowania.
     pub fn with_state(saved: Saved) -> Self {
         let n = saved.positions.len();
+        let mut cfg = saved.cfg;
+        cfg.clamp_box();
+        let box_size = saved.box_size.clamp(1.0, MAX_BOX_MPC_H);
+        let mut mesh = Mesh::with_boundary(cfg.pm_grid, 0.0, Boundary::Periodic);
+        mesh.pin_cube(ZERO, box_size);
         let mut engine = Self {
             cosmology: saved.cosmology,
-            cfg: saved.cfg,
+            cfg,
             a: saved.a,
             positions: saved.positions,
             momenta: saved.momenta,
             accel: vec![ZERO; n],
             mass: saved.mass,
-            box_size: saved.box_size,
+            box_size,
             step: saved.step,
             initial_contrast: saved.initial_contrast,
             masses: vec![saved.mass; n],
-            mesh: Mesh::new(saved.cfg.pm_grid, BOX_MARGIN),
+            mesh,
             li: LayzerIrvine::default(),
         };
+        engine.wrap_positions();
         engine.refresh_forces();
         engine.li = LayzerIrvine::start(engine.energies());
         engine
@@ -217,6 +243,13 @@ impl Engine {
         center_span(&self.positions)
     }
 
+    fn wrap_positions(&mut self) {
+        let length = self.box_size;
+        for p in &mut self.positions {
+            *p = wrap_into_box(*p, length);
+        }
+    }
+
     fn refresh_forces(&mut self) {
         // Softening zerowy znaczy „tyle, ile daje siatka": `Mesh` podnosi go do
         // rozmiaru oczka, bo poniżej niego nie ma informacji o polu.
@@ -240,6 +273,7 @@ impl Engine {
         for (x, p) in self.positions.iter_mut().zip(self.momenta.iter()) {
             *x += *p * drift;
         }
+        self.wrap_positions();
         self.refresh_forces();
 
         let kick_out = self.cosmology.kick_factor(a_mid, a2);
@@ -256,15 +290,14 @@ impl Engine {
     ///
     /// `T = Σ p²/(2ma²)` wynika wprost z `p = a²ẋ`.
     ///
-    /// `W` jest liczone z twierdzenia wirialnego, a nie z sumowania par: dla potencjału
-    /// `1/r` zachodzi `Σ mᵢ xᵢ·aᵢ = U`, gdzie `U = −G Σ_{i<j} mᵢmⱼ/rᵢⱼ`. Dowód jest
-    /// jednolinijkowy — po sparowaniu wyrazów `i,j` licznik `xᵢ·(xᵢ−xⱼ) + xⱼ·(xⱼ−xᵢ)`
-    /// zwija się do `|xᵢ−xⱼ|²` — i daje wynik BEZ czynnika ½. Czynnik ½, dopisany tu
-    /// przez analogię do `U = ½ Σ mᵢφᵢ`, byłby błędem podwójnie policzonego parowania:
-    /// residuum Layzera–Irvine'a przestaje wtedy zbiegać do zera i nie mierzy niczego.
+    /// `W` jest liczone z energii pola na siatce, `½ Σ m_cell Φ_cell`, a nie z
+    /// twierdzenia wirialnego `Σ xᵢ·aᵢ`. Na torusie `x` jest początkiem układu,
+    /// nie wektorem fizycznym: przesunięcie początku zmienia `Σ x·a`, a energia
+    /// nie może od tego zależeć. Dla periodycznego Poissona `Φ_k = −4πG ρ_k/k²`
+    /// definicją energii jest właśnie `½ ∫ ρ Φ`.
     ///
-    /// Potencjał właściwy dla zaburzeń to `φ = Φ/a`, więc `W = U/a`. Bez tego dzielenia
-    /// bilans domykałby się tylko przy `a ≈ 1`.
+    /// Potencjał właściwy dla zaburzeń to `φ = Φ/a`, więc `W = U/a`. Bez tego
+    /// dzielenia bilans domykałby się tylko przy `a ≈ 1`.
     pub fn energies(&self) -> Energies {
         let a2 = self.a * self.a;
         let kinetic: f64 = self
@@ -272,15 +305,9 @@ impl Engine {
             .iter()
             .map(|p| p.norm_squared() / (2.0 * self.mass * a2))
             .sum();
-        let virial: f64 = self
-            .positions
-            .iter()
-            .zip(self.accel.iter())
-            .map(|(x, acc)| x.dot(*acc))
-            .sum();
         Energies {
             kinetic,
-            potential: self.mass * virial / self.a,
+            potential: self.mesh.field_energy() / self.a,
         }
     }
 
@@ -304,7 +331,7 @@ impl Engine {
 
     pub fn describe_solver(&self) -> String {
         format!(
-            "PM {}³ izolowany, oczko {:.3} Mpc/h",
+            "PM {}³ periodyczny, oczko {:.3} Mpc/h",
             self.cfg.pm_grid,
             self.mesh.cell_size().unwrap_or(0.0)
         )
@@ -336,7 +363,7 @@ impl Energies {
 ///
 /// W przestrzeni komowej energia NIE jest zachowana — ekspansja odbiera energię
 /// kinetyczną. Zachowana jest kombinacja z równania Layzera–Irvine'a:
-/// `d(T + W)/dlna + (2T + W) = 0`. Jej residuum jest tym, czym dla układu izolowanego
+/// `d(T + W)/dlna + (2T + W) = 0`. Jej residuum jest tym, czym dla N-ciał
 /// jest dryf energii: jedyną liczbą mówiącą, czy krok całkowania jest dość mały.
 #[derive(Clone, Copy, Debug, Default)]
 struct LayzerIrvine {
@@ -387,12 +414,21 @@ mod tests {
         Engine::new(Cosmology::planck18(), small(dlna))
     }
 
-    fn largest_move_fraction(before: &[Vec3], after: &[Vec3], span: f64) -> f64 {
+    fn largest_move_fraction(before: &[Vec3], after: &[Vec3], length: f64) -> f64 {
         before
             .iter()
             .zip(after.iter())
-            .map(|(a, b)| (*b - *a).max_abs_component() / span)
+            .map(|(a, b)| periodic_offset(*a, *b, length).max_abs_component() / length)
             .fold(0.0, f64::max)
+    }
+
+    fn periodic_offset(before: Vec3, after: Vec3, length: f64) -> Vec3 {
+        let d = after - before;
+        vec3(
+            d.x - length * (d.x / length).round(),
+            d.y - length * (d.y / length).round(),
+            d.z - length * (d.z / length).round(),
+        )
     }
 
     #[test]
@@ -403,11 +439,23 @@ mod tests {
             RunConfig::linear_growth(),
         ] {
             assert!(cfg.box_size > 0.0);
+            assert!(cfg.box_size <= MAX_BOX_MPC_H, "pudło {} > 80 Mpc/h", cfg.box_size);
             assert!(cfg.n_grid >= 16 && cfg.pm_grid >= 16);
             assert!(cfg.z_start > cfg.z_end);
             assert!(cfg.dlna > 0.0);
             assert_eq!(cfg.n_particles(), cfg.n_grid.pow(3));
         }
+    }
+
+    #[test]
+    fn oversized_box_is_clamped_to_the_no_wiggle_limit() {
+        let cfg = RunConfig {
+            box_size: 400.0,
+            ..small(0.0005)
+        };
+        let eng = Engine::new(Cosmology::planck18(), cfg);
+        assert!((eng.box_size - MAX_BOX_MPC_H).abs() < 1e-12);
+        assert!(eng.cfg.box_size <= MAX_BOX_MPC_H);
     }
 
     #[test]
@@ -444,26 +492,58 @@ mod tests {
     fn first_step_moves_particles_by_a_small_fraction() {
         let mut eng = engine(0.0005);
         let before = eng.positions.clone();
-        let span = eng.center_span().1;
+        let length = eng.box_size;
         eng.advance();
-        let moved = largest_move_fraction(&before, &eng.positions, span);
-        assert!(moved < 0.05, "największe przesunięcie {moved} rozciągłości");
+        let moved = largest_move_fraction(&before, &eng.positions, length);
+        assert!(moved < 0.05, "największe przesunięcie {moved} boku pudła");
     }
 
-    /// Przestrzeń jest otwarta: cząstka wyprowadzona za pudło ma tam zostać.
-    /// Zawinięcie oznaczałoby periodyczność, której ten solver nie ma.
+    /// Przestrzeń jest torusem: cząstka wyprowadzona za ścianę wraca z przeciwnej.
     #[test]
-    fn particles_are_never_wrapped_into_the_box() {
+    fn particle_leaving_through_a_wall_reenters_the_opposite_face() {
         let mut eng = engine(0.0005);
-        eng.positions[0] = crate::vec3::vec3(-1.0, 0.0, 0.0);
+        let length = eng.box_size;
+        eng.positions[0] = vec3(-1.0, 1.0, 1.0);
         eng.momenta[0] = ZERO;
         eng.accel[0] = ZERO;
         eng.advance();
         assert!(
-            eng.positions[0].x < 0.0,
-            "pozycja zawinięta: {}",
+            (eng.positions[0].x - (length - 1.0)).abs() < 1e-9,
+            "pozycja po zawinięciu: {}",
             eng.positions[0].x
         );
+        assert!(eng.positions.iter().all(|p| {
+            p.x >= 0.0 && p.x < length && p.y >= 0.0 && p.y < length && p.z >= 0.0 && p.z < length
+        }));
+    }
+
+    /// Jednorodna sieć na torusie to wyłącznie tryb `k = 0` — siła znika.
+    #[test]
+    fn uniform_lattice_has_vanishing_force() {
+        let mut eng = engine(0.0005);
+        let n = eng.cfg.n_grid;
+        let h = eng.box_size / n as f64;
+        let mut i = 0;
+        for iz in 0..n {
+            for iy in 0..n {
+                for ix in 0..n {
+                    eng.positions[i] = vec3(
+                        (ix as f64 + 0.5) * h,
+                        (iy as f64 + 0.5) * h,
+                        (iz as f64 + 0.5) * h,
+                    );
+                    eng.momenta[i] = ZERO;
+                    i += 1;
+                }
+            }
+        }
+        eng.refresh_forces();
+        let max_a = eng
+            .accel
+            .iter()
+            .map(|a| a.norm())
+            .fold(0.0, f64::max);
+        assert!(max_a < 1e-4, "siła na jednorodnej sieci: {max_a}");
     }
 
     #[test]
@@ -483,11 +563,11 @@ mod tests {
         let mut worst = 0.0f64;
         for _ in 0..40 {
             let before = eng.positions.clone();
-            let span = eng.center_span().1;
+            let length = eng.box_size;
             eng.advance();
-            worst = worst.max(largest_move_fraction(&before, &eng.positions, span));
+            worst = worst.max(largest_move_fraction(&before, &eng.positions, length));
         }
-        assert!(worst < 0.15, "największe przesunięcie {worst} rozciągłości");
+        assert!(worst < 0.15, "największe przesunięcie {worst} boku pudła");
     }
 
     /// Energia potencjalna musi być UJEMNA — grawitacja jest przyciągająca.
@@ -534,5 +614,7 @@ mod tests {
     fn describe_solver_reports_the_grid() {
         let text = engine(0.0005).describe_solver();
         assert!(text.contains("16³"), "{text}");
+        assert!(text.contains("periodyczny"), "{text}");
+        assert!(!text.contains("izolowany"), "{text}");
     }
 }

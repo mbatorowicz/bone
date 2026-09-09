@@ -147,6 +147,25 @@ impl Mesh {
         self.boundary
     }
 
+    /// Przypnij siatkę do sześcianu `[origin, origin+length)`.
+    ///
+    /// Periodyczny solver nie dopasowuje pudła do chmury — długość jest częścią
+    /// zadania (bok komowy ΛCDM), a nie wynikiem `Box::fit`.
+    pub fn pin_cube(&mut self, origin: Vec3, length: f64) {
+        let length = if length.is_finite() && length > 0.0 {
+            length
+        } else {
+            1.0
+        };
+        self.box_ = Some(Box {
+            origin,
+            h: length / self.grid as f64,
+            ng: self.grid,
+            edge: 0,
+        });
+        self.kernel_key = None;
+    }
+
     pub fn box_(&self) -> Option<Box> {
         self.box_
     }
@@ -171,6 +190,17 @@ impl Mesh {
     /// najbardziej potrzebna. Współczynnik 1,8 zamiast 1,0 zapobiega przebudowie
     /// jądra w każdym kroku przy powolnym zapadaniu.
     fn ensure_box(&mut self, positions: &[Vec3]) -> Box {
+        if matches!(self.boundary, Boundary::Periodic) {
+            if self.box_.is_none() {
+                let max = positions
+                    .iter()
+                    .map(|p| p.x.max(p.y).max(p.z))
+                    .fold(0.0_f64, f64::max)
+                    .max(1.0);
+                self.pin_cube(ZERO, max);
+            }
+            return self.box_.expect("pudło periodyczne");
+        }
         let needed = Box::fit(positions, self.grid, self.margin, EDGE_CELLS);
         let stale = match self.box_ {
             None => true,
@@ -181,6 +211,13 @@ impl Mesh {
             self.refits += 1;
         }
         self.box_.expect("pudło jest ustawione")
+    }
+
+    fn particle_stencil(&self, box_: Box, position: Vec3) -> Option<Stencil> {
+        match self.boundary {
+            Boundary::Isolated => box_.stencil(position),
+            Boundary::Periodic => box_.stencil_wrapping(position),
+        }
     }
 
     fn ensure_kernel(&mut self, box_: Box, g: f64, softening: f64) {
@@ -219,13 +256,13 @@ impl Mesh {
         self.kernel_key = Some(key);
     }
 
-    /// Rozłóż masę na siatkę. Cząstka poza obszarem użytecznym jest pomijana —
-    /// dosunięcie jej do ściany byłoby wprowadzeniem brzegu, którego ta metoda
-    /// z definicji nie ma.
+    /// Rozłóż masę na siatkę. Izolowany pomija cząstkę poza obszarem użytecznym
+    /// (dosunięcie do ściany byłoby brzegiem, którego Hockney nie ma). Periodyczny
+    /// zawija CIC przez ścianę.
     fn deposit(&mut self, positions: &[Vec3], masses: &[f64], box_: Box) {
         self.density.fill(0.0);
         for (p, m) in positions.iter().zip(masses.iter()) {
-            if let Some(s) = box_.stencil(*p) {
+            if let Some(s) = self.particle_stencil(box_, *p) {
                 s.scatter_f32(&mut self.density, *m);
             }
         }
@@ -381,7 +418,7 @@ impl Mesh {
         };
         positions
             .par_iter()
-            .map(|p| match box_.stencil(*p) {
+            .map(|p| match self.particle_stencil(box_, *p) {
                 None => ZERO,
                 Some(s) => s.gather_vec3_f32(&self.accel_grid),
             })
@@ -404,7 +441,7 @@ impl Mesh {
         positions
             .par_iter()
             .zip(masses.par_iter())
-            .map(|(p, m)| match box_.stencil(*p) {
+            .map(|(p, m)| match self.particle_stencil(box_, *p) {
                 None => 0.0,
                 Some(s) => s.gather_f32(&self.potential_grid) - m * self_energy(&s, &self_kernel),
             })
@@ -416,13 +453,27 @@ impl Mesh {
         let Some(box_) = self.box_ else {
             return -1.0;
         };
-        let Some(s) = box_.stencil(position) else {
+        let Some(s) = self.particle_stencil(box_, position) else {
             return -1.0;
         };
         let rho = s.gather_f32(&self.density);
         // `density` trzyma MASĘ w komórce, a nie gęstość — dzielimy przez objętość
         // dopiero tutaj, żeby depozyt pozostał dokładnie zachowujący masę.
         rho / (box_.cell_volume() * mean_density.max(1e-30)) - 1.0
+    }
+
+    /// Energia grawitacyjna pola `½ Σ m_cell Φ_cell`.
+    ///
+    /// Dla periodycznego Poissona to jest definicja: `k = 0` wyzerowane, więc
+    /// `½ ∫ ρ Φ` jest energią zaburzeń. Plummerowski człon własny CIC tu nie
+    /// pasuje — tamto jądro jest izolowane.
+    pub fn field_energy(&self) -> f64 {
+        0.5 * self
+            .density
+            .iter()
+            .zip(self.potential_grid.iter())
+            .map(|(m, phi)| *m as f64 * *phi as f64)
+            .sum::<f64>()
     }
 
     /// Softening, którym siatka NAPRAWDĘ liczy — nigdy mniejszy od oczka.
@@ -822,6 +873,24 @@ mod tests {
         assert!(
             a_x < 0.0,
             "zgęstek powinien przyciągać z prawej: a_x={a_x}"
+        );
+    }
+
+    /// Cząstka w ostatniej komórce nie może zgubić masy — to ten sam test, którego
+    /// brak oznaczałby, że ΛCDM na torusie ma dziurę przy ścianie.
+    #[test]
+    fn periodic_deposit_conserves_mass_across_the_face() {
+        let ng = 16;
+        let length = 16.0;
+        let mut mesh = Mesh::with_boundary(ng, 0.0, Boundary::Periodic);
+        mesh.pin_cube(ZERO, length);
+        let h = length / ng as f64;
+        let p = vec3(length - 0.25 * h, 0.5 * h, 0.5 * h);
+        mesh.refresh(&[p], &[1.0], G, 0.0);
+        let total: f32 = mesh.density.iter().sum();
+        assert!(
+            (total - 1.0).abs() < 1e-5,
+            "masa zgubiona przy ścianie: {total}"
         );
     }
 }

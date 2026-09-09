@@ -109,7 +109,27 @@ impl Box {
         if base.iter().any(|b| *b < 0 || *b > top) {
             return None;
         }
-        Some(self.assemble([base[0] as usize, base[1] as usize, base[2] as usize], frac))
+        Some(self.assemble(
+            [base[0] as usize, base[1] as usize, base[2] as usize],
+            frac,
+            false,
+        ))
+    }
+
+    /// Wagi CIC z zawijaniem indeksów — torus.
+    ///
+    /// Cząstka przy ścianie rozkłada masę na węzeł po drugiej stronie, zamiast
+    /// wypadać z siatki. Izolowany solver tego nie woła: tam zawinięcie byłoby
+    /// periodycznością tylnymi drzwiami.
+    pub fn stencil_wrapping(self, position: Vec3) -> Option<Stencil> {
+        let (base, frac) = self.local(position)?;
+        let ng = self.ng as i64;
+        let wrapped = [
+            base[0].rem_euclid(ng) as usize,
+            base[1].rem_euclid(ng) as usize,
+            base[2].rem_euclid(ng) as usize,
+        ];
+        Some(self.assemble(wrapped, frac, true))
     }
 
     /// Wagi CIC z dosunięciem do skrajnej komórki — patrz uwaga w nagłówku modułu.
@@ -121,7 +141,7 @@ impl Box {
             base[1].clamp(0, top) as usize,
             base[2].clamp(0, top) as usize,
         ];
-        Some(self.assemble(clamped, frac))
+        Some(self.assemble(clamped, frac, false))
     }
 
     /// Współrzędne w komórkach: indeks dolnego węzła i część ułamkowa.
@@ -149,20 +169,27 @@ impl Box {
         Some(([base[0] as i64, base[1] as i64, base[2] as i64], frac))
     }
 
-    fn assemble(self, base: [usize; 3], frac: Vec3) -> Stencil {
+    fn assemble(self, base: [usize; 3], frac: Vec3, wrap: bool) -> Stencil {
         let ng = self.ng;
         let mut index = [0usize; CORNERS];
         let mut weight = [0.0f64; CORNERS];
         let mut corner = 0;
+        let node = |i: usize, d: usize| -> usize {
+            if wrap {
+                (i + d) % ng
+            } else {
+                i + d
+            }
+        };
         for dx in 0..2 {
             let wx = if dx == 0 { 1.0 - frac.x } else { frac.x };
-            let ix = base[0] + dx;
+            let ix = node(base[0], dx);
             for dy in 0..2 {
                 let wy = if dy == 0 { 1.0 - frac.y } else { frac.y };
-                let iy = base[1] + dy;
+                let iy = node(base[1], dy);
                 for dz in 0..2 {
                     let wz = if dz == 0 { 1.0 - frac.z } else { frac.z };
-                    let iz = base[2] + dz;
+                    let iz = node(base[2], dz);
                     index[corner] = (ix * ng + iy) * ng + iz;
                     weight[corner] = wx * wy * wz;
                     corner += 1;
@@ -310,6 +337,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Cząstka w ostatniej komórce musi oddać masę na węzeł zerowy, nie wypaść.
+    #[test]
+    fn wrapping_stencil_puts_mass_on_the_opposite_face() {
+        let ng = 8usize;
+        let h = 1.0;
+        let b = Box {
+            origin: ZERO,
+            h,
+            ng,
+            edge: 0,
+        };
+        let p = vec3(ng as f64 * h - 0.25 * h, 0.5 * h, 0.5 * h);
+        assert!(b.stencil(p).is_none(), "bez zawijania skrajna komórka wypada");
+        let s = b.stencil_wrapping(p).expect("torus");
+        let total: f64 = s.weight.iter().sum();
+        assert!((total - 1.0).abs() < 1e-12, "suma wag {total}");
+        let plane = ng * ng;
+        assert!(
+            s.index.iter().any(|&i| i / plane == 0),
+            "brak węzła x=0 w {:?}",
+            s.index
+        );
+        assert!(s.index.iter().all(|&i| i < b.cells()));
     }
 
     #[test]

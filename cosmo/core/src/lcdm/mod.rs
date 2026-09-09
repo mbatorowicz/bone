@@ -3,8 +3,9 @@
 //! Bieg zaczyna się przy `z = 49`, kiedy zaburzenia gęstości są jeszcze liniowe,
 //! i prowadzi próbkę materii do dziś i dalej. Zimna ciemna materia jest jedyną
 //! składową grawitującą — barionów, gazu ani chłodzenia tu nie ma, bo struktura
-//! wielkoskalowa ich nie potrzebuje. Brzegi siatki są izolowane (Hockney), nie
-//! periodyczne: to odosobniona próbka, nie kawałek wszechświata z kopiami.
+//! wielkoskalowa ich nie potrzebuje. Brzegi są periodyczne: wycinek wszechświata
+//! z kopiami, pudło komowe stałe, pozycje zawijane. Widmo `P(k)` jest wariantem
+//! bez oscylacji barionowych, więc bok pudła nie przekracza 80 Mpc/h.
 //!
 //! Podział modułów:
 //!
@@ -27,5 +28,5 @@ pub mod presets;
 pub mod units;
 
 pub use cosmology::Cosmology;
-pub use engine::{Engine, RunConfig, Saved};
+pub use engine::{Engine, RunConfig, Saved, MAX_BOX_MPC_H};
 pub use presets::Preset;
