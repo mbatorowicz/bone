@@ -26,8 +26,12 @@
 //! Warstwy wyższe: [`io`] (checkpoint i trajektoria), [`session`] (pętla biegu)
 //! i [`cli`] (bieg wsadowy) nie zawierają fizyki i nie są przez fizykę używane.
 //! Okno leży w osobnym crate `bone-ui`.
+//!
+//! Stałe katalogowe (CODATA 2022, PDG 2025) są w [`constants`] — jeden wpis
+//! na α, ħc i masy e/p/n/W, zamiast osobnych liczb w `sm` i `qm`.
 
 pub mod cli;
+pub mod constants;
 pub mod fft;
 pub mod grid;
 pub mod io;

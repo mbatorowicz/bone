@@ -1,36 +1,13 @@
-//! Jednostki atomowe i stałe, z których liczone są energie, długości i czasy.
+//! Jednostki atomowe — przeliczniki na eV, nm i fs.
 //!
 //! Silnik liczy w jednostkach Hartree’a: `ħ = m_e = e = 4πε₀ = 1`. Długość to
-//! promień Bohra, energia — hartree, czas — `ħ/E_h`. Na zewnątrz (panel, CLI)
-//! liczby są podawane w eV, nm i fs, bo tak się je porównuje z tablicami.
+//! promień Bohra, energia — hartree, czas — `ħ/E_h`. Stałe żyją w
+//! [`crate::constants`] (CODATA 2022); ten moduł tylko je pokazuje na zewnątrz.
 
-/// Energia Hartree w elektronowoltach (CODATA 2018).
-pub const HARTREE_EV: f64 = 27.211_386_245_988;
-
-/// Promień Bohra w metrach.
-pub const BOHR_M: f64 = 5.291_772_109_03e-11;
-
-/// Promień Bohra w femtometrach — ta sama miara co w modelu cząstek.
-pub const BOHR_FM: f64 = BOHR_M * 1.0e15;
-
-/// Czas atomowy `ħ/E_h` w sekundach.
-pub const ATOMIC_TIME_S: f64 = 2.418_884_326_585_7e-17;
-
-/// Czas atomowy w femtosekundach.
-pub const ATOMIC_TIME_FS: f64 = ATOMIC_TIME_S * 1.0e15;
-
-/// Stała struktury subtelnej.
-pub const ALPHA: f64 = 7.297_352_569_3e-3;
-
-/// Stosunek masy protonu do masy elektronu.
-pub const PROTON_ELECTRON_MASS: f64 = 1_836.152_673_43;
-
-/// `hc` w eV·nm — do przeliczania energii przejścia na długość fali.
-pub const HC_EV_NM: f64 = 1_239.841_93;
-
-/// Rydberg nieskończonej masy jądra, w eV. Doświadczalny wodór jest mniejszy
-/// o czynnik zredukowanej masy; różnica jest mierzona, nie ukrywana.
-pub const RYDBERG_INF_EV: f64 = 0.5 * HARTREE_EV;
+pub use crate::constants::{
+    ALPHA, ATOMIC_TIME_FS, ATOMIC_TIME_S, BOHR_FM, BOHR_M, HARTREE_EV, HC_EV_NM,
+    PROTON_ELECTRON_MASS, RYDBERG_INF_EV,
+};
 
 pub fn hartree_to_ev(e: f64) -> f64 {
     e * HARTREE_EV
@@ -98,5 +75,12 @@ mod tests {
     fn conversions_are_finite_and_oriented() {
         assert!(hartree_to_ev(1.0) > 27.0);
         assert!(atomic_to_fs(1.0) > 0.0);
+    }
+
+    /// α w atomach i α w cząstkach to ta sama liczba. Dwa wpisy rozjechałyby
+    /// się przy aktualizacji CODATA i nikt by tego nie zauważył na orbitalu.
+    #[test]
+    fn fine_structure_constant_is_shared_with_particles() {
+        assert!((ALPHA - crate::sm::units::ALPHA_EM).abs() < 1e-18);
     }
 }

@@ -373,7 +373,7 @@ mod tests {
 
     /// Sedno całkowania: energia ma oscylować wokół zera, a nie odpływać.
     /// Mierzone na parze proton-elektron, czyli najostrzejszym przypadku
-    /// dostępnym w tym modelu (stosunek mas 1836).
+    /// dostępnym w tym modelu (stosunek mas z CODATA).
     #[test]
     fn energy_drift_stays_small_and_does_not_grow() {
         let cfg = two_body(

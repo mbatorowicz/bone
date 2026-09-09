@@ -18,19 +18,20 @@
 //!
 //! # Skąd biorą się przeliczniki
 //!
-//! Jedyną stałą wymiarową, jakiej potrzeba, jest `ħc = 197,3269804 MeV·fm`. Ona
-//! zamienia „odwrotność energii" na długość i odwrotnie, więc każde sprzężenie
-//! poniżej sprowadza się do liczby bezwymiarowej pomnożonej przez `ħc`.
+//! Stałe katalogowe żyją w [`crate::constants`]. Tutaj zostają tylko sprzężenia
+//! fenomenologiczne (silne, napięcie struny) i aliasy w jednostkach cząstek.
 
-/// `ħc` — CODATA 2018, wartość dokładna z definicji `ħ` i `c`.
-pub const HBAR_C: f64 = 197.326_980_4;
+use crate::constants;
+
+/// `ħc` — dokładne z definicji `ħ` i `c` (SI 2019).
+pub const HBAR_C: f64 = constants::HBAR_C_MEV_FM;
 
 /// Ile femtometrów przebywa światło w sekundzie. Zamienia czasy życia z PDG
 /// (sekundy) na czas symulacji (fm/c).
-pub const FM_PER_SECOND: f64 = 2.997_924_58e23;
+pub const FM_PER_SECOND: f64 = constants::FM_PER_SECOND;
 
-/// Stała struktury subtelnej `α = e²/(4πε₀ħc)` — CODATA 2018.
-pub const ALPHA_EM: f64 = 7.297_352_569_3e-3;
+/// Stała struktury subtelnej `α = e²/(4πε₀ħc)` — CODATA 2022.
+pub const ALPHA_EM: f64 = constants::ALPHA;
 
 /// Sprzężenie Coulomba w tych jednostkach: `V = COULOMB · z₁z₂ / r`,
 /// gdzie `z` jest ładunkiem w jednostkach `e`, `r` w fm, a `V` wychodzi w MeV.
@@ -38,10 +39,10 @@ pub const ALPHA_EM: f64 = 7.297_352_569_3e-3;
 /// Liczbowo `≈ 1,44 MeV·fm` — czyli dwa protony w odległości femtometra dzieli
 /// bariera rzędu megaelektronowolta. To jest ta sama „1,44", która w chemii pojawia
 /// się jako `14,4 eV·Å`; zgodność obu zapisów jest testowana.
-pub const COULOMB: f64 = ALPHA_EM * HBAR_C;
+pub const COULOMB: f64 = constants::COULOMB;
 
-/// Masa Plancka w MeV — `√(ħc/G)` przeliczone z CODATA 2018.
-pub const PLANCK_MASS: f64 = 1.220_890e22;
+/// Masa Plancka w MeV — `√(ħc/G)` przeliczone z CODATA 2022.
+pub const PLANCK_MASS: f64 = constants::PLANCK_MASS_MEV;
 
 /// Sprzężenie grawitacyjne: `V = −GRAVITY · m₁m₂ / r` (masy w MeV, `r` w fm).
 ///
@@ -49,7 +50,7 @@ pub const PLANCK_MASS: f64 = 1.220_890e22;
 /// właśnie ta liczba, przez którą grawitacja w fizyce cząstek nie występuje.
 /// Moduł [`crate::sm::forces`] liczy ją mimo to i **mierzy** jej udział, zamiast
 /// zakładać, że jest zaniedbywalna.
-pub const GRAVITY: f64 = HBAR_C / (PLANCK_MASS * PLANCK_MASS);
+pub const GRAVITY: f64 = constants::GRAVITY_MEV_FM;
 
 /// Sprzężenie silne w skali ~1 GeV. Nie jest stałą — biegnie ze skalą energii —
 /// więc każda pojedyncza liczba jest przybliżeniem obowiązującym w jednym zakresie.
@@ -64,10 +65,10 @@ pub const ALPHA_S: f64 = 0.30;
 pub const STRING_TENSION: f64 = 0.18e6 / HBAR_C;
 
 /// Masa bozonu W w MeV — wyznacza zasięg oddziaływania słabego.
-pub const W_MASS: f64 = 80_377.0;
+pub const W_MASS: f64 = constants::W_MASS_MEV;
 
-/// Sprzężenie słabe `α_w = g²/4π = α/sin²θ_W` przy `sin²θ_W = 0,2312`.
-pub const ALPHA_WEAK: f64 = ALPHA_EM / 0.231_21;
+/// Sprzężenie słabe `α_w = g²/4π = α/sin²θ_W` przy `sin²θ_W` z PDG.
+pub const ALPHA_WEAK: f64 = ALPHA_EM / constants::SIN2_THETA_W;
 
 /// Zasięg oddziaływania słabego `λ_W = ħc/M_W` w fm.
 ///
@@ -80,7 +81,7 @@ pub const WEAK_RANGE: f64 = HBAR_C / W_MASS;
 
 /// Klasyczny promień elektronu `r_e = α ħc / m_e c²` w fm. Skala przekroju
 /// czynnego na anihilację `e⁺e⁻ → γγ`.
-pub const CLASSICAL_ELECTRON_RADIUS: f64 = 2.817_940_326_2;
+pub const CLASSICAL_ELECTRON_RADIUS: f64 = constants::CLASSICAL_ELECTRON_RADIUS_FM;
 
 /// Zamień czas życia z tablic PDG (sekundy) na czas symulacji (fm/c).
 pub fn lifetime_to_fm(seconds: f64) -> f64 {
@@ -115,7 +116,7 @@ mod tests {
     /// jedyny warunek, żeby wolno je było dodać do siebie w jednej pętli sił.
     #[test]
     fn gravity_to_coulomb_ratio_for_two_protons() {
-        let proton = 938.272_088_16;
+        let proton = constants::PROTON_MASS_MEV;
         let ratio = GRAVITY * proton * proton / COULOMB;
         assert!(
             (8.0e-37..9.0e-37).contains(&ratio),
@@ -153,11 +154,13 @@ mod tests {
     /// liczbą, która może się rozjechać z resztą tablicy.
     #[test]
     fn classical_radius_follows_from_the_coupling() {
-        let electron_mass = 0.510_998_950_0;
-        let derived = COULOMB / electron_mass;
-        assert!(
-            (derived - CLASSICAL_ELECTRON_RADIUS).abs() < 1e-6,
-            "r_e wyprowadzone {derived} vs wpisane {CLASSICAL_ELECTRON_RADIUS}"
-        );
+        let derived = COULOMB / constants::ELECTRON_MASS_MEV;
+        assert!((derived - CLASSICAL_ELECTRON_RADIUS).abs() < 1e-15);
+    }
+
+    /// Masa W w jednostkach i w tablicy cząstek to ten sam wpis.
+    #[test]
+    fn w_mass_matches_the_particle_table() {
+        assert!((W_MASS - crate::sm::particles::Species::WBoson.mass()).abs() < 1e-12);
     }
 }

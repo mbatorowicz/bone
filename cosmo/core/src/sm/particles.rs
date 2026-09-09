@@ -27,6 +27,7 @@
 //! sprzężeń Yukawy ani stanów związanych innych niż wypisane hadrony. To jest tablica
 //! liczb kwantowych do symulacji klasycznej, a nie wejście do generatora zdarzeń.
 
+use crate::constants;
 use crate::sm::units;
 
 /// Do której rodziny należy cząstka.
@@ -87,7 +88,7 @@ pub enum Species {
     PionNeutral,
 }
 
-/// Jeden wiersz tablicy. Wartości z PDG (wydanie 2024) i CODATA 2018.
+/// Jeden wiersz tablicy. Wartości z PDG 2025 i CODATA 2022.
 #[derive(Clone, Copy, Debug)]
 pub struct Data {
     /// Identyfikator w wierszu poleceń i w plikach konfiguracji.
@@ -148,7 +149,7 @@ const TABLE: [Data; 21] = [
         id: "d",
         symbol: "d",
         name: "kwark dolny",
-        mass: 4.67,
+        mass: 4.70,
         charge_thirds: -1,
         spin_doubled: 1,
         color: Color::Triplet,
@@ -164,7 +165,7 @@ const TABLE: [Data; 21] = [
         id: "s",
         symbol: "s",
         name: "kwark dziwny",
-        mass: 93.4,
+        mass: 93.5,
         charge_thirds: -1,
         spin_doubled: 1,
         color: Color::Triplet,
@@ -180,7 +181,7 @@ const TABLE: [Data; 21] = [
         id: "c",
         symbol: "c",
         name: "kwark powabny",
-        mass: 1_270.0,
+        mass: 1_273.0,
         charge_thirds: 2,
         spin_doubled: 1,
         color: Color::Triplet,
@@ -196,7 +197,7 @@ const TABLE: [Data; 21] = [
         id: "b",
         symbol: "b",
         name: "kwark piękny",
-        mass: 4_180.0,
+        mass: 4_183.0,
         charge_thirds: -1,
         spin_doubled: 1,
         color: Color::Triplet,
@@ -216,13 +217,13 @@ const TABLE: [Data; 21] = [
         id: "t",
         symbol: "t",
         name: "kwark szczytowy",
-        mass: 172_690.0,
+        mass: constants::TOP_MASS_MEV,
         charge_thirds: 2,
         spin_doubled: 1,
         color: Color::Triplet,
         family: Family::Quark,
         generation: 3,
-        lifetime_s: Some(4.6e-25),
+        lifetime_s: Some(constants::TOP_MEAN_LIFE_S),
         baryon_thirds: 1,
         lepton: 0,
         flavour: None,
@@ -232,7 +233,7 @@ const TABLE: [Data; 21] = [
         id: "e",
         symbol: "e⁻",
         name: "elektron",
-        mass: 0.510_998_950_0,
+        mass: constants::ELECTRON_MASS_MEV,
         charge_thirds: -3,
         spin_doubled: 1,
         color: Color::Neutral,
@@ -264,7 +265,7 @@ const TABLE: [Data; 21] = [
         id: "tau",
         symbol: "τ⁻",
         name: "taon",
-        mass: 1_776.86,
+        mass: 1_776.93,
         charge_thirds: -3,
         spin_doubled: 1,
         color: Color::Neutral,
@@ -360,13 +361,13 @@ const TABLE: [Data; 21] = [
         id: "W",
         symbol: "W⁺",
         name: "bozon W",
-        mass: 80_377.0,
+        mass: constants::W_MASS_MEV,
         charge_thirds: 3,
         spin_doubled: 2,
         color: Color::Neutral,
         family: Family::Gauge,
         generation: 0,
-        lifetime_s: Some(3.157e-25),
+        lifetime_s: Some(constants::W_MEAN_LIFE_S),
         baryon_thirds: 0,
         lepton: 0,
         flavour: None,
@@ -376,13 +377,13 @@ const TABLE: [Data; 21] = [
         id: "Z",
         symbol: "Z",
         name: "bozon Z",
-        mass: 91_187.6,
+        mass: constants::Z_MASS_MEV,
         charge_thirds: 0,
         spin_doubled: 2,
         color: Color::Neutral,
         family: Family::Gauge,
         generation: 0,
-        lifetime_s: Some(2.638e-25),
+        lifetime_s: Some(constants::Z_MEAN_LIFE_S),
         baryon_thirds: 0,
         lepton: 0,
         flavour: None,
@@ -392,13 +393,13 @@ const TABLE: [Data; 21] = [
         id: "H",
         symbol: "H",
         name: "bozon Higgsa",
-        mass: 125_250.0,
+        mass: constants::HIGGS_MASS_MEV,
         charge_thirds: 0,
         spin_doubled: 0,
         color: Color::Neutral,
         family: Family::Scalar,
         generation: 0,
-        lifetime_s: Some(2.06e-22),
+        lifetime_s: Some(constants::HIGGS_MEAN_LIFE_S),
         baryon_thirds: 0,
         lepton: 0,
         flavour: None,
@@ -408,7 +409,7 @@ const TABLE: [Data; 21] = [
         id: "p",
         symbol: "p",
         name: "proton",
-        mass: 938.272_088_16,
+        mass: constants::PROTON_MASS_MEV,
         charge_thirds: 3,
         spin_doubled: 1,
         color: Color::Neutral,
@@ -424,7 +425,7 @@ const TABLE: [Data; 21] = [
         id: "n",
         symbol: "n",
         name: "neutron",
-        mass: 939.565_420_52,
+        mass: constants::NEUTRON_MASS_MEV,
         charge_thirds: 0,
         spin_doubled: 1,
         color: Color::Neutral,
@@ -502,11 +503,11 @@ impl Species {
             .filter(|s| s.data().family != Family::Hadron)
     }
 
-    pub fn data(self) -> &'static Data {
+    pub const fn data(self) -> &'static Data {
         &TABLE[self as usize]
     }
 
-    pub fn mass(self) -> f64 {
+    pub const fn mass(self) -> f64 {
         self.data().mass
     }
 
@@ -1002,5 +1003,19 @@ mod tests {
                 || (d.family == Family::Hadron && d.baryon_thirds != 0);
             assert_eq!(half_integer, fermion, "{species:?} ma spin niezgodny z rodziną");
         }
+    }
+
+    /// Masy e, p, n, W, Z, H, t biorą się z katalogu, nie z drugiego wpisu.
+    #[test]
+    fn catalog_masses_are_the_shared_constants() {
+        assert!((Species::Electron.mass() - constants::ELECTRON_MASS_MEV).abs() < 1e-18);
+        assert!((Species::Proton.mass() - constants::PROTON_MASS_MEV).abs() < 1e-12);
+        assert!((Species::Neutron.mass() - constants::NEUTRON_MASS_MEV).abs() < 1e-12);
+        assert!((Species::WBoson.mass() - constants::W_MASS_MEV).abs() < 1e-12);
+        assert!((Species::ZBoson.mass() - constants::Z_MASS_MEV).abs() < 1e-12);
+        assert!((Species::Higgs.mass() - constants::HIGGS_MASS_MEV).abs() < 1e-12);
+        assert!((Species::Top.mass() - constants::TOP_MASS_MEV).abs() < 1e-12);
+        let w_life = Species::WBoson.data().lifetime_s.unwrap();
+        assert!((w_life - constants::W_MEAN_LIFE_S).abs() < 1e-40);
     }
 }

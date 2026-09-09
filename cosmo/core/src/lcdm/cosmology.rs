@@ -36,7 +36,7 @@ impl Cosmology {
     pub fn planck18() -> Self {
         let h = 0.6736;
         let omega_m = 0.3153;
-        let t_cmb = 2.7255;
+        let t_cmb = crate::constants::T_CMB;
         let omega_r = omega_r_from_cmb(h, t_cmb);
         Self {
             h,
@@ -63,7 +63,7 @@ impl Cosmology {
             omega_k: 0.0,
             n_s: 1.0,
             sigma8: 0.8,
-            t_cmb: 2.7255,
+            t_cmb: crate::constants::T_CMB,
         }
     }
 
@@ -152,12 +152,16 @@ impl Cosmology {
     }
 }
 
-/// `Ω_r` z temperatury CMB: fotony plus trzy rodziny neutrin relatywistycznych.
+    /// `Ω_r` z temperatury CMB: fotony plus trzy rodziny neutrin relatywistycznych.
+    ///
+    /// `N_eff = 3,046` to wartość, przy której Planck 2018 wyciągał parametry
+    /// (Mangano i in.). Nowsze rachunki dają 3,044; podstawienie nowszej liczby
+    /// do parametrów wyciągniętych przy starej psułoby spójność zestawu.
 fn omega_r_from_cmb(h: f64, t_cmb: f64) -> f64 {
     const N_EFF: f64 = 3.046;
     /// `(7/8)·(4/11)^{4/3}` — udział jednej rodziny neutrin względem fotonów.
     const NEUTRINO_SHARE: f64 = 0.227_107_317;
-    let theta = t_cmb / 2.7255;
+    let theta = t_cmb / crate::constants::T_CMB;
     let omega_gamma = 2.472e-5 * theta.powi(4) / (h * h);
     omega_gamma * (1.0 + NEUTRINO_SHARE * N_EFF)
 }

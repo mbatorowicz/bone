@@ -232,10 +232,11 @@ pub fn two_body_momentum(parent: f64, m1: f64, m2: f64) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sm::particles::Species;
     use crate::vec3::vec3;
 
-    const ELECTRON: f64 = 0.510_998_95;
-    const MUON: f64 = 105.658_375_5;
+    const ELECTRON: f64 = Species::Electron.mass();
+    const MUON: f64 = Species::Muon.mass();
 
     #[test]
     fn massless_particle_travels_at_exactly_one() {
@@ -382,7 +383,7 @@ mod tests {
     /// więc sprawdza wzór na `p*` w najprostszym możliwym przypadku.
     #[test]
     fn two_body_momentum_of_a_symmetric_massless_pair_is_half_the_mass() {
-        let pi0 = 134.9768;
+        let pi0 = Species::PionNeutral.mass();
         let p = two_body_momentum(pi0, 0.0, 0.0).unwrap();
         assert!((p - pi0 / 2.0).abs() < 1e-12);
     }
@@ -391,7 +392,7 @@ mod tests {
     /// niezależnie od tego kodu.
     #[test]
     fn two_body_momentum_matches_the_pion_decay_from_tables() {
-        let p = two_body_momentum(139.570_39, MUON, 0.0).unwrap();
+        let p = two_body_momentum(Species::PionCharged.mass(), MUON, 0.0).unwrap();
         assert!((p - 29.792).abs() < 0.01, "p* = {p} zamiast 29,79 MeV/c");
     }
 

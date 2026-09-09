@@ -84,11 +84,11 @@ const MUON: [Channel; 1] = [Channel {
 
 const TAU: [Channel; 4] = [
     Channel {
-        branching: 0.1782,
+        branching: 0.1785,
         products: &[p(Species::Electron), a(Species::NeutrinoE), p(Species::NeutrinoTau)],
     },
     Channel {
-        branching: 0.1739,
+        branching: 0.1737,
         products: &[p(Species::Muon), a(Species::NeutrinoMu), p(Species::NeutrinoTau)],
     },
     Channel {
@@ -100,7 +100,7 @@ const TAU: [Channel; 4] = [
     // do trzech ciał), więc ich prawdopodobieństwo dostaje kanał dwupionowy.
     // Skutek: pionów jest za mało, a ich energie za wysokie.
     Channel {
-        branching: 0.5397,
+        branching: 0.5396,
         products: &[
             a(Species::PionCharged),
             p(Species::PionNeutral),
@@ -194,7 +194,7 @@ const HIGGS: [Channel; 7] = [
         products: &[p(Species::Bottom), a(Species::Bottom)],
     },
     // H → WW i H → ZZ mają razem ~24% szerokości, ale wymagają bozonu poza powłoką
-    // masy: `2·m_W = 161 GeV > m_H = 125 GeV`. Ten model zna tylko cząstki
+    // masy: `2·m_W = 160,7 GeV > m_H = 125,2 GeV`. Ten model zna tylko cząstki
     // rzeczywiste, więc oba kanały zostaną ODSIANE jako niedozwolone. Wypisujemy je
     // mimo to, żeby powód ich nieobecności był widoczny w kodzie, a nie zgadywany
     // z tego, czego w tablicy brakuje.
