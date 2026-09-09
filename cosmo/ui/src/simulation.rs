@@ -27,21 +27,60 @@ impl Mode {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Relativistic => "chmura SR",
-            Self::Cosmological => "ΛCDM",
-            Self::Particles => "cząstki SM",
-            Self::Atoms => "atomy QM",
+            Self::Relativistic => "N-ciała",
+            Self::Cosmological => "Kosmologia",
+            Self::Particles => "Cząstki",
+            Self::Atoms => "Atomy",
         }
     }
 
     pub fn subtitle(self) -> &'static str {
         match self {
-            Self::Relativistic => "grawitacja newtonowska, kinematyka SR — układ izolowany",
-            Self::Cosmological => "ΛCDM · Planck 2018 · PM izolowany (Hockney)",
-            Self::Particles => "Model Standardowy · klasyczne trajektorie · 4 oddziaływania",
-            Self::Atoms => "orbitale · |ψ|² · wodór dokładny, reszta Slater",
+            Self::Relativistic => "Newton + kinematyka SR",
+            Self::Cosmological => "ΛCDM · PM izolowany",
+            Self::Particles => "kinematyka i rozpady PDG",
+            Self::Atoms => "Schrödinger · |ψ|²",
         }
     }
+
+    /// Cztery linie karty nad suwakami: równanie, zakres, porównanie, czym to nie jest.
+    pub fn card(self) -> ModelCard {
+        match self {
+            Self::Relativistic => ModelCard {
+                equation: "F = −G m m r / r³ (Plummer)",
+                scope: "izolowana chmura, nie OTW",
+                comparison: "wiriał, dryf E, błąd siły",
+                not_this: "nie metryka, nie fale grawitacyjne",
+            },
+            Self::Cosmological => ModelCard {
+                equation: "p = a² ẋ, tło Planck 2018",
+                scope: "CDM, bez gazu",
+                comparison: "residuum Layzera–Irvine’a",
+                not_this: "na razie brzegi izolowane",
+            },
+            Self::Particles => ModelCard {
+                equation: "klasyczny gaz + losowe rozpady PDG",
+                scope: "nie QFT",
+                comparison: "B, L, Q całkowite",
+                not_this: "nie amplitudy, nie hadronizacja",
+            },
+            Self::Atoms => ModelCard {
+                equation: "ψ_nlm = R_nl Y_lm",
+                scope: "chmura to próbka |ψ|²",
+                comparison: "NIST / Hα",
+                not_this: "nie HF, nie cząsteczki",
+            },
+        }
+    }
+}
+
+/// Karta modelu: nazwa zakładki to laboratorium, nie nazwa teorii.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModelCard {
+    pub equation: &'static str,
+    pub scope: &'static str,
+    pub comparison: &'static str,
+    pub not_this: &'static str,
 }
 
 /// To, co panel i renderer widzą: żywy bieg albo nagranie.
@@ -183,6 +222,34 @@ mod tests {
             assert!(!mode.label().is_empty());
             assert!(!mode.subtitle().is_empty());
         }
+    }
+
+    #[test]
+    fn tab_names_are_laboratories_not_theories() {
+        assert_eq!(Mode::Relativistic.label(), "N-ciała");
+        assert_eq!(Mode::Cosmological.label(), "Kosmologia");
+        assert_eq!(Mode::Particles.label(), "Cząstki");
+        assert_eq!(Mode::Atoms.label(), "Atomy");
+        assert_eq!(Mode::Relativistic.subtitle(), "Newton + kinematyka SR");
+        assert_eq!(Mode::Cosmological.subtitle(), "ΛCDM · PM izolowany");
+        assert_eq!(Mode::Particles.subtitle(), "kinematyka i rozpady PDG");
+        assert_eq!(Mode::Atoms.subtitle(), "Schrödinger · |ψ|²");
+    }
+
+    #[test]
+    fn model_cards_name_the_equation_and_the_lie() {
+        let nbody = Mode::Relativistic.card();
+        assert!(nbody.equation.contains("Plummer"));
+        assert!(nbody.not_this.contains("fale grawitacyjne"));
+        let cosmo = Mode::Cosmological.card();
+        assert!(cosmo.equation.contains("Planck 2018"));
+        assert!(cosmo.not_this.contains("izolowane"));
+        let particles = Mode::Particles.card();
+        assert!(particles.scope.contains("nie QFT"));
+        assert!(particles.not_this.contains("hadronizacja"));
+        let atoms = Mode::Atoms.card();
+        assert!(atoms.equation.contains("Y_lm"));
+        assert!(atoms.not_this.contains("HF"));
     }
 
     #[test]

@@ -94,6 +94,8 @@ pub fn side_panel(
         }
     });
     ui.add_space(6.0);
+    model_card(ui, setup.mode);
+    ui.add_space(6.0);
 
     match setup.mode {
         Mode::Relativistic => relativistic_form(ui, setup),
@@ -149,6 +151,27 @@ pub fn side_panel(
         ui.colored_label(Color32::from_rgb(220, 180, 80), format!("⚠ {warning}"));
     }
     action
+}
+
+fn model_card(ui: &mut Ui, mode: Mode) {
+    let card = mode.card();
+    ui.group(|ui| {
+        egui::Grid::new("model-card")
+            .num_columns(2)
+            .spacing([12.0, 2.0])
+            .show(ui, |ui| {
+                for (name, value) in [
+                    ("Równanie", card.equation),
+                    ("Zakres", card.scope),
+                    ("Porównanie", card.comparison),
+                    ("To nie jest", card.not_this),
+                ] {
+                    ui.label(RichText::new(name).small().weak());
+                    ui.label(RichText::new(value).small());
+                    ui.end_row();
+                }
+            });
+    });
 }
 
 fn io_form(ui: &mut Ui, setup: &mut Setup) {
@@ -240,14 +263,6 @@ fn relativistic_form(ui: &mut Ui, setup: &mut Setup) {
         egui::Slider::new(&mut setup.sr.physics.cooling_rate, 0.0..=10.0)
             .text("chłodzenie 1/t"),
     );
-    ui.label(
-        RichText::new(
-            "Grawitacja jest newtonowska; względność siedzi w kinematyce, więc żadna \
-             cząstka nie przekroczy c. Jasność punktu to β = v/c.",
-        )
-        .small()
-        .weak(),
-    );
 }
 
 fn cosmological_form(ui: &mut Ui, setup: &mut Setup) {
@@ -276,14 +291,6 @@ fn cosmological_form(ui: &mut Ui, setup: &mut Setup) {
     // Siatka PM powyżej 64³ przestaje się opłacać: koszt rośnie jak (2·N)³·log N,
     // a rozdzielczość ogranicza i tak liczba cząstek.
     setup.lcdm.pm_grid = setup.lcdm.n_grid.min(64);
-    ui.label(
-        RichText::new(
-            "Przestrzeń otwarta — bez ścian i zawijania. Krok jest mniejszy przy z<5, \
-             gdzie struktura jest już nieliniowa. Jasność punktu to kontrast gęstości.",
-        )
-        .small()
-        .weak(),
-    );
 }
 
 fn particles_form(ui: &mut Ui, setup: &mut Setup) {
@@ -361,15 +368,6 @@ fn particles_form(ui: &mut Ui, setup: &mut Setup) {
         RichText::new(mixture_text(&setup.sm))
             .small()
             .weak(),
-    );
-    ui.label(
-        RichText::new(
-            "To nie jest QFT: klasyczne trajektorie, bez atomów i hadronizacji. \
-             Siły i rozpady żyją na skalach, które się nie spotykają — zestaw nastaw \
-             wybiera jedną z nich. Jasność punktu to β = v/c.",
-        )
-        .small()
-        .weak(),
     );
 }
 
@@ -495,16 +493,6 @@ fn atoms_form(ui: &mut Ui, setup: &mut Setup) {
     );
     ui.checkbox(&mut setup.qm.run.sparkle, "iskrzenie chmury");
 
-    ui.label(
-        RichText::new(
-            "Chmura to próbka prawdopodobieństwa, nie elektrony. Wodór i He⁺ są \
-             dokładne. C, Ne, Fe: niezależne elektrony z Z_eff Slatera — błąd IE \
-             stoi w tabeli. Jasność: znak ψ (orbital) albo powłoka n (atom).",
-        )
-        .small()
-        .weak(),
-    );
-
     let charts = qm::plot::from_config(&setup.qm);
     charts::atom_charts(ui, &charts);
 }
@@ -593,6 +581,17 @@ mod tests {
             let text = setup_summary(&setup);
             assert!(!text.is_empty());
             assert!(!text.contains("NaN"), "{text}");
+        }
+    }
+
+    #[test]
+    fn every_mode_has_a_four_line_card() {
+        for mode in Mode::ALL {
+            let card = mode.card();
+            assert!(!card.equation.is_empty(), "{mode:?}");
+            assert!(!card.scope.is_empty(), "{mode:?}");
+            assert!(!card.comparison.is_empty(), "{mode:?}");
+            assert!(!card.not_this.is_empty(), "{mode:?}");
         }
     }
 }
