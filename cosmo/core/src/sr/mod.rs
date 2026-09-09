@@ -1,8 +1,7 @@
-//! Grawitacja z kinematyką szczególnej teorii względności: odosobniona chmura cząstek.
+//! Laboratorium N-ciał: grawitacja Newtona, kinematyka szczególnej teorii względności.
 //!
-//! Model jest jeden i warto go nazwać wprost, żeby nikt nie oczekiwał po nim czegoś
-//! innego: grawitacja jest newtonowska (chwilowa, `1/r²`), a względność siedzi
-//! wyłącznie w kinematyce — pęd `p = γmv` jest zmienną stanu, a prędkość wynika z
+//! Nazwa zakładki to N-ciała, nie „SR". Grawitacja jest newtonowska (chwilowa, `1/r²`),
+//! a względność siedzi wyłącznie w kinematyce — pęd `p = γmv` jest zmienną stanu, a prędkość wynika z
 //! pędu, więc żadna cząstka nie przekroczy `c`. To NIE jest ogólna teoria
 //! względności: nie ma metryki, nie ma opóźnienia oddziaływania.
 //!

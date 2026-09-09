@@ -1,9 +1,10 @@
-//! Model standardowy kosmologii: ΛCDM z parametrami Plancka 2018.
+//! Laboratorium kosmologii: ΛCDM z parametrami Plancka 2018.
 //!
 //! Bieg zaczyna się przy `z = 49`, kiedy zaburzenia gęstości są jeszcze liniowe,
 //! i prowadzi próbkę materii do dziś i dalej. Zimna ciemna materia jest jedyną
 //! składową grawitującą — barionów, gazu ani chłodzenia tu nie ma, bo struktura
-//! wielkoskalowa ich nie potrzebuje.
+//! wielkoskalowa ich nie potrzebuje. Brzegi siatki są izolowane (Hockney), nie
+//! periodyczne: to odosobniona próbka, nie kawałek wszechświata z kopiami.
 //!
 //! Podział modułów:
 //!
@@ -14,8 +15,9 @@
 //! - [`engine`] — leapfrog KDK po `ln a` na siatce PM,
 //! - [`presets`] — nazwane zestawy nastaw (CLI i panel).
 //!
-//! Solver grawitacji jest wspólny z trybem SR ([`crate::mesh`]) — te dwa modele
-//! różnią się kinematyką i warunkami początkowymi, nie sposobem liczenia sił.
+//! Solver grawitacji jest wspólny z laboratorium N-ciał ([`crate::mesh`]) — te dwa
+//! laboratoria różnią się kinematyką i warunkami początkowymi, nie sposobem
+//! liczenia sił.
 
 pub mod cosmology;
 pub mod engine;

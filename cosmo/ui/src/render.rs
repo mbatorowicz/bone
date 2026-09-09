@@ -19,7 +19,7 @@ use bone_core::vec3::Vec3;
 
 /// Co renderer musi wiedzieć o symulacji — i nic więcej.
 ///
-/// Trait, a nie konkretny typ, bo rysowane są dwa różne modele: chmura SR (odcień
+/// Trait, a nie konkretny typ, bo rysowane są dwa różne laboratoria: N-ciała (odcień
 /// to prędkość względem `c`) i próbka ΛCDM (odcień to kontrast gęstości). Renderer
 /// nie ma powodu wiedzieć, który to który.
 pub trait PointCloud {

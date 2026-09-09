@@ -1,15 +1,14 @@
 # Bone Cosmo
 
-Aplikacja desktopowa: cztery modele na jednym komputerze.
+Cztery laboratoria na jednym komputerze: N-ciała, kosmologia, cząstki i atomy.
 
-- **ΛCDM (Planck 2018)** — próbka materii, Particle-Mesh z izolowanymi brzegami
-  (Hockney), warunki Zel'dovicha, całkowanie po `ln a`.
-- **SR** — odosobniona chmura, kinematyka szczególnej teorii względności,
-  opcjonalne chłodzenie.
-- **SM** — Model Standardowy jako klasyczny gaz cząstek elementarnych:
-  cztery oddziaływania, rozpady, anihilacja. To nie jest QFT.
-- **QM** — atomy i orbitale. Wodór dokładny (Schrödinger), reszta Slater
-  z mierzonym błędem jonizacji. Chmura to `|ψ|²`.
+- **Kosmologia** (`lcdm`) — ΛCDM, Planck 2018, Particle-Mesh z izolowanymi
+  brzegami (Hockney), warunki Zel'dovicha, całkowanie po `ln a`.
+- **N-ciała** (`sr`) — Newton + kinematyka SR, odosobniona chmura,
+  opcjonalna dyssypacja. Nie OTW.
+- **Cząstki** (`sm`) — klasyczny gaz + rozpady PDG. To nie jest QFT.
+- **Atomy** (`qm`) — Schrödinger · `|ψ|²`. Wodór dokładny, reszta Slater
+  z mierzonym błędem jonizacji.
 
 Liczy na tym komputerze (FFT + wgpu do okna). Nie używa Vercela.
 

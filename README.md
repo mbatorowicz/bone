@@ -1,20 +1,21 @@
 # Bone
 
-Grawitacja N ciał, gaz cząstek i atomy na jednym komputerze. Cztery modele,
-jeden silnik, jedna aplikacja w Ruście — okno z panelem albo bieg wsadowy
-z wiersza poleceń.
+Cztery laboratoria na jednym komputerze: N-ciała, kosmologia, cząstki i atomy.
+Jeden silnik, jedna aplikacja w Ruście — okno z panelem albo bieg wsadowy
+z wiersza poleceń. Slugi `sr`, `lcdm`, `sm`, `qm` to identyfikatory kodu,
+nie nazwy zakładek.
 
-- **`sr`** — odosobniona chmura cząstek. Grawitacja newtonowska, kinematyka
-  szczególnej teorii względności, dyssypacja zależna od gęstości.
-- **`lcdm`** — próbka materii w modelu standardowym kosmologii (Planck 2018).
-  Warunki początkowe z widma mocy, całkowanie po `ln a` od `z = 49` do dziś.
-- **`sm`** — Model Standardowy jako klasyczny gaz cząstek. Siedemnaście gatunków
-  elementarnych plus hadrony, cztery oddziaływania, rozpady i anihilacja.
-  To nie jest kwantowa teoria pola.
-- **`qm`** — atomy i orbitale. Wodór i jony wodoropodobne są dokładnym
-  rozwiązaniem Schrödingera (`ψ_{nlm} = R_{nl} Y_{lm}`). Atomy wieloelektronowe
+- **N-ciała** (`sr`) — Newton + kinematyka SR. Izolowana chmura, dyssypacja
+  zależna od gęstości. Nie OTW: nie ma metryki ani fal grawitacyjnych.
+- **Kosmologia** (`lcdm`) — ΛCDM, tło Planck 2018, Particle-Mesh z izolowanymi
+  brzegami. Warunki początkowe z widma mocy, całkowanie po `ln a` od `z = 49`
+  do dziś.
+- **Cząstki** (`sm`) — klasyczny gaz + losowe rozpady PDG. Gatunki biorą masę,
+  ładunek i czas życia z tablicy. To nie jest kwantowa teoria pola.
+- **Atomy** (`qm`) — Schrödinger · `|ψ|²`. Wodór i jony wodoropodobne są
+  dokładnym rozwiązaniem (`ψ_{nlm} = R_{nl} Y_{lm}`). Atomy wieloelektronowe
   to niezależne elektrony z `Z_eff` Slatera; błąd wobec tablic jonizacji jest
-  mierzony i pokazywany. Chmura na ekranie to próbka `|ψ|²`, nie zbiór elektronów.
+  mierzony i pokazywany. Chmura na ekranie to próbka gęstości, nie zbiór elektronów.
 
 Błąd przybliżenia jest **mierzony i pokazywany**, nie zakładany. To jedyna
 liczba, która odróżnia przybliżenie od usterki.
@@ -46,7 +47,7 @@ Bieg wsadowy zostawia w katalogu wyjściowym `checkpoint.bin` (pełny stan w `f6
 do wznowienia), `config.json` (użyte parametry) i `frames/` z indeksem
 `trajectory.json` (klatki w `f32`, do oglądania).
 
-## Model SR: co to liczy
+## N-ciała: co to liczy
 
 Zmienną stanu jest **pęd**, nie prędkość:
 
@@ -77,7 +78,7 @@ To model „kinematyka SR + siła Newtona", a nie ogólna teoria względności:
   co do rzędu wielkości;
 - brak horyzontów zdarzeń i precesji peryhelium.
 
-## Model ΛCDM: co to liczy
+## Kosmologia: co to liczy
 
 Tło z parametrów Plancka 2018, widmo mocy Eisensteina i Hu (wariant bez oscylacji
 barionowych) znormalizowane przez `σ₈`, przesunięcia Zel'dovicha jako warunek
@@ -89,7 +90,7 @@ kawałek jednorodnego wszechświata z nieskończonym ciągiem kopii. Na brzegu p
 brakuje przyciągania z zewnątrz, więc krawędź rusza się wolniej od środka. Za to nic
 nie zawija się przez ścianę i chmura może się swobodnie zapadać.
 
-## Kształty startowe (SR)
+## Kształty startowe (N-ciała)
 
 Dziesięć rozkładów: `ball`, `cube`, `cylinder`, `disk`, `torus`, `sphere_shell`,
 `filament`, `gaussian`, `two_clumps`, `plummer`. Proporcje ustawiają dwa pokrętła:
@@ -188,15 +189,14 @@ to jest sprawdzenie, że fragmentacja jest fizyką, a nie artefaktem siatki. Wp�
 gęstości siatki i grubości przekroju: [`docs/frag_g192.png`](docs/frag_g192.png),
 [`docs/frag_thin.png`](docs/frag_thin.png).
 
-## Model cząstek (SM): co to liczy
+## Cząstki: co to liczy
 
-Klasyczny gaz punktów o tożsamości z Modelu Standardowego. Każda cząstka ma
-gatunek z tablicy PDG (masa, ładunek w trzecich `e`, spin, kolor, czas życia).
-Na cząstki działają cztery oddziaływania — Coulomb i grawitacja na tym samym
-solverze co modele grawitacyjne, silne i słabe pętlą po parach — a nad tym
-siedzi warstwa stochastyczna: rozpady i anihilacja.
+Klasyczny gaz punktów; gatunki biorą masę, ładunek, spin, kolor i czas życia
+z tablicy PDG. Coulomb i grawitacja idą na tym samym solverze co laboratorium
+N-ciał, Cornell pętlą po parach, a nad tym siedzi warstwa stochastyczna:
+rozpady i anihilacja.
 
-Zmienną stanu jest pęd, tak samo jak w SR, i z dodatkowego powodu: cząstka
+Zmienną stanu jest pęd, tak samo jak w laboratorium N-ciał, i z dodatkowego powodu: cząstka
 bezmasowa (foton, gluon, neutrino w tym przybliżeniu) nie ma prędkości jako
 zmiennej stanu — jej prędkość jest zawsze `c`.
 
@@ -220,7 +220,7 @@ działa na `~1 fm/c`. Zestaw nastaw wybiera jedną z tych skal.
 | `piony` | π⁰ → γγ, masa spoczynkowa w ruch |
 | `uwiezienie` | para uū, potencjał Cornella |
 
-## Model atomów (QM): co to liczy
+## Atomy: co to liczy
 
 Stany związane atomu wodoropodobnego są tu **dokładnym** rozwiązaniem równania
 Schrödingera, nie modelem Bohra:
@@ -251,8 +251,8 @@ oraz drabinę poziomów i linie Rydberga (Lyman, Balmer, Paschen). Hα wychodzi
 ### Czego to NIE jest
 
 To nie jest QFT, QED ani pełny atom wieloelektronowy. Brak korelacji, wymienności
-Hartree–Focka, struktury subtelnej jako dynamiki, cząsteczek i wiązań. Klasyczny
-model `sm` nadal nie wiąże elektronu z protonem — ten moduł odpowiada na inne
+Hartree–Focka, struktury subtelnej jako dynamiki, cząsteczek i wiązań. Laboratorium
+cząstek (`sm`) nadal nie wiąże elektronu z protonem — ten moduł odpowiada na inne
 pytanie.
 
 ### Zestawy nastaw
@@ -323,10 +323,11 @@ są w `constants.rs`, a wartości pochodne (`r_e`, `τ = ħ/Γ`, Rydberg) z nich
 wynikają. Audyt z 9 września 2026, z tabelą zmian i tym, co zostawiono
 świadomie: [`docs/audyt.md`](docs/audyt.md).
 
-Modele `sr` i `lcdm` różnią się kinematyką i warunkami początkowymi, nie sposobem
-liczenia grawitacji — dlatego `mesh`, `grid`, `fft`, `vec3` i `rng` są wspólne.
-`sm` bierze z tego kinematykę relatywistyczną i solver dalekozasięgowy: Coulomb
-to to samo równanie co grawitacja, z innym ładunkiem. `qm` nie liczy sił —
-chmura jest próbką `|ψ|²`, a czas jest fazą superpozycji.
+Laboratoria N-ciał (`sr`) i kosmologii (`lcdm`) różnią się kinematyką i warunkami
+początkowymi, nie sposobem liczenia grawitacji — dlatego `mesh`, `grid`, `fft`,
+`vec3` i `rng` są wspólne. Cząstki (`sm`) biorą z tego kinematykę relatywistyczną
+i solver dalekozasięgowy: Coulomb to to samo równanie co grawitacja, z innym
+ładunkiem. Atomy (`qm`) nie liczą sił — chmura jest próbką `|ψ|²`, a czas jest
+fazą superpozycji.
 
 Strona z opisem i odnośnikiem do wydania leży w `www/` (statyczna, nic nie liczy).

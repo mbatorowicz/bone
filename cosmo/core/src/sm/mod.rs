@@ -1,12 +1,12 @@
-//! Model cząstek elementarnych — Model Standardowy w silniku N ciał.
+//! Laboratorium cząstek: klasyczny gaz i rozpady z tablic PDG.
 //!
 //! # Czym to jest
 //!
-//! Klasyczna symulacja gazu cząstek o tożsamości z Modelu Standardowego. Każda
-//! cząstka ma gatunek z [`particles`] — masę, ładunek, spin, kolor, liczby kwantowe
-//! i czas życia z tablic PDG. Na cząstki działają cztery oddziaływania
-//! ([`forces`]), całkowane relatywistycznie na pędzie, a nad tym siedzi warstwa
-//! stochastyczna ([`decays`]), która rozpada cząstki i anihiluje pary.
+//! Klasyczna symulacja gazu. Każda cząstka ma gatunek z [`particles`] — masę,
+//! ładunek, spin, kolor, liczby kwantowe i czas życia z tablic PDG. Na cząstki
+//! działają siły ([`forces`]), całkowane relatywistycznie na pędzie, a nad tym
+//! siedzi warstwa stochastyczna ([`decays`]), która rozpada cząstki i anihiluje
+//! pary.
 //!
 //! # Czym to NIE jest
 //!
