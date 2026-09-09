@@ -18,7 +18,7 @@ use bone_core::sr;
 use bone_core::sr::config::{BackendKind, Geometry};
 use bone_core::io::checkpoint;
 use crate::charts;
-use crate::simulation::{Mode, View};
+use crate::simulation::{Mode, ModelCard, View};
 
 /// Nastawy formularza — to, co widzi użytkownik, zanim wciśnie „Uruchom".
 pub struct Setup {
@@ -94,7 +94,7 @@ pub fn side_panel(
         }
     });
     ui.add_space(6.0);
-    model_card(ui, setup.mode);
+    model_card(ui, setup);
     ui.add_space(6.0);
 
     match setup.mode {
@@ -162,8 +162,19 @@ pub fn side_panel(
     action
 }
 
-fn model_card(ui: &mut Ui, mode: Mode) {
-    let card = mode.card();
+fn model_card(ui: &mut Ui, setup: &Setup) {
+    let card = match setup.mode {
+        Mode::Particles => {
+            let lab = sm::presets::lab_card(setup.sm_preset);
+            ModelCard {
+                equation: lab.equation,
+                scope: lab.scope,
+                comparison: lab.comparison,
+                not_this: lab.not_this,
+            }
+        }
+        mode => mode.card(),
+    };
     ui.group(|ui| {
         egui::Grid::new("model-card")
             .num_columns(2)
@@ -310,7 +321,7 @@ fn particles_form(ui: &mut Ui, setup: &mut Setup) {
     ui.horizontal_wrapped(|ui| {
         for preset in sm::presets::PRESETS {
             if ui
-                .selectable_label(setup.sm_preset == preset.id, preset.id)
+                .selectable_label(setup.sm_preset == preset.id, preset.label)
                 .clicked()
             {
                 setup.sm = (preset.build)();
@@ -336,13 +347,14 @@ fn particles_form(ui: &mut Ui, setup: &mut Setup) {
         });
 
     let mut n = setup.sm.spawn.total_count();
-    if ui
-        .add(
-            egui::Slider::new(&mut n, 2..=20_000)
-                .logarithmic(true)
-                .text("cząstek N"),
-        )
-        .changed()
+    if setup.sm.spawn.shape != Shape::Pair
+        && ui
+            .add(
+                egui::Slider::new(&mut n, 2..=20_000)
+                    .logarithmic(true)
+                    .text("cząstek N"),
+            )
+            .changed()
     {
         setup.sm.spawn.scale_to(n);
     }
@@ -600,5 +612,16 @@ mod tests {
             assert!(!card.comparison.is_empty(), "{mode:?}");
             assert!(!card.not_this.is_empty(), "{mode:?}");
         }
+    }
+
+    #[test]
+    fn particle_card_depends_on_the_laboratory() {
+        let plazma = sm::presets::lab_card("plazma");
+        let muon = sm::presets::lab_card("miony");
+        let confine = sm::presets::lab_card("uwiezienie");
+        assert_ne!(plazma.equation, muon.equation);
+        assert!(muon.equation.contains("γτ"));
+        assert!(confine.scope.contains("qq"));
+        assert!(sm::presets::lab_card("anihilacja").not_this.contains("QED"));
     }
 }

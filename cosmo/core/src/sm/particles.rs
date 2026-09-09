@@ -533,6 +533,41 @@ impl Species {
     pub fn lifetime_fm(self) -> Option<f64> {
         self.data().lifetime_s.map(units::lifetime_to_fm)
     }
+
+    /// Masa jest w katalogu, ale gatunek nie wchodzi do gazu ani do uwięzienia.
+    ///
+    /// W, Z, H, gluon i kwark szczytowy zostają w [`TABLE`], bo stałe PDG mają
+    /// jedno źródło. Laboratoria ich nie spawniają: to nie są cząstki gazu.
+    pub const fn catalog_only(self) -> bool {
+        matches!(
+            self,
+            Self::Top | Self::Gluon | Self::WBoson | Self::ZBoson | Self::Higgs
+        )
+    }
+
+    /// Kwark (poza szczytowym) — tylko laboratorium uwięzienia, jedna para.
+    pub const fn confinement_only(self) -> bool {
+        matches!(
+            self,
+            Self::Up | Self::Down | Self::Strange | Self::Charm | Self::Bottom
+        )
+    }
+
+    /// Gatunki gazu: e, μ, τ, ν, γ, π, p, n.
+    pub const fn in_gas(self) -> bool {
+        !self.catalog_only() && !self.confinement_only()
+    }
+
+    /// Czy gatunek wolno postawić w warunku początkowym tego laboratorium.
+    pub const fn may_spawn(self, strong: bool) -> bool {
+        if self.catalog_only() {
+            return false;
+        }
+        if self.confinement_only() {
+            return strong;
+        }
+        true
+    }
 }
 
 /// Konkretna cząstka: gatunek i to, czy jest antycząstką.
@@ -1003,6 +1038,44 @@ mod tests {
                 || (d.family == Family::Hadron && d.baryon_thirds != 0);
             assert_eq!(half_integer, fermion, "{species:?} ma spin niezgodny z rodziną");
         }
+    }
+
+    /// Podział na gaz, uwięzienie i katalog musi pokrywać całą tablicę — inaczej
+    /// nowy gatunek wszedłby do dynamiki bez decyzji, czy ma do tego prawo.
+    #[test]
+    fn every_species_has_exactly_one_spawn_role() {
+        for species in Species::ALL {
+            let roles = [
+                species.in_gas(),
+                species.confinement_only(),
+                species.catalog_only(),
+            ]
+            .into_iter()
+            .filter(|flag| *flag)
+            .count();
+            assert_eq!(roles, 1, "{species:?} nie ma jednoznacznej roli");
+        }
+        let gas: Vec<&str> = Species::ALL
+            .iter()
+            .filter(|s| s.in_gas())
+            .map(|s| s.id())
+            .collect();
+        assert_eq!(
+            gas,
+            ["e", "mu", "tau", "nu_e", "nu_mu", "nu_tau", "gamma", "p", "n", "pi", "pi0"]
+        );
+        let catalog: Vec<&str> = Species::ALL
+            .iter()
+            .filter(|s| s.catalog_only())
+            .map(|s| s.id())
+            .collect();
+        assert_eq!(catalog, ["t", "g", "W", "Z", "H"]);
+        assert!(Species::Up.confinement_only());
+        assert!(!Species::Top.may_spawn(true));
+        assert!(Species::Up.may_spawn(true));
+        assert!(!Species::Up.may_spawn(false));
+        assert!(Species::Electron.may_spawn(false));
+        assert!(!Species::WBoson.may_spawn(false));
     }
 
     /// Masy e, p, n, W, Z, H, t biorą się z katalogu, nie z drugiego wpisu.

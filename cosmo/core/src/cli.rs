@@ -39,7 +39,7 @@ Opcje trybu sr:
     --wznow                       wznów z checkpointu w katalogu wyjściowym
 
 Opcje trybu sm:
-    --zestaw NAZWA                plazma | para | miony | anihilacja | piony | uwiezienie
+    --zestaw NAZWA                plazma | para | miony | piony | anihilacja | uwiezienie
     --config PLIK                 konfiguracja z pliku JSON
     --czastek N                   przeskaluj mieszankę do N cząstek
     --wznow                       wznów z checkpointu w katalogu wyjściowym

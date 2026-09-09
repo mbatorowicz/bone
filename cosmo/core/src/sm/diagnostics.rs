@@ -589,6 +589,7 @@ mod tests {
             radius: 2.0,
             ..cfg.spawn
         };
+        cfg.forces.strong = true;
         let state = spawn::make_state(&cfg).state;
         let snapshot = measured(
             &state,

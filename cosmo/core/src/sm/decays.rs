@@ -850,6 +850,9 @@ mod tests {
             ])
             .unwrap();
         assert!((momenta[0] + momenta[1]).norm() < 1e-12, "fotony nie są przeciwne");
+        let e1 = momenta[0].norm();
+        let e2 = momenta[1].norm();
+        assert!((e1 + e2 - pion.mass()).abs() < 1e-12, "E₁+E₂ = {} ≠ m = {}", e1 + e2, pion.mass());
         for photon in momenta {
             assert!((photon.norm() - pion.mass() / 2.0).abs() < 1e-12);
         }
@@ -912,8 +915,18 @@ mod tests {
 
         let n = 4_000;
         let slow = survival(vec![ZERO; n], lifetime);
-        // Szybki mion przez γ razy dłuższy czas laboratoryjny musi przeżyć tak samo.
+        // τ_lab = γτ: przez γ razy dłuższy czas laboratoryjny szybki mion
+        // przeżywa tyle samo, co spoczywający przez τ — ułamek 1/e.
         let fast = survival(vec![momentum; n], lifetime * gamma);
+        let expected = std::f64::consts::E.recip();
+        assert!(
+            (slow - expected).abs() < 0.04,
+            "spoczywający po τ: {slow}, oczekiwane {expected}"
+        );
+        assert!(
+            (fast - expected).abs() < 0.04,
+            "lecący z γ=10 po τ_lab=γτ: {fast}, oczekiwane {expected}"
+        );
         assert!(
             (slow - fast).abs() < 0.04,
             "spoczywający: {slow}, lecący z γ=10: {fast}"

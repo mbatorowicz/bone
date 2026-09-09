@@ -271,6 +271,26 @@ impl Config {
             ));
         }
 
+        if self
+            .spawn
+            .mixture
+            .iter()
+            .any(|i| i.count > 0 && i.particle.species.catalog_only())
+        {
+            out.push(
+                "W, Z, H, t i gluony nie wchodzą do gazu — zostają w katalogu mas".to_string(),
+            );
+        }
+
+        let quarks = self
+            .spawn
+            .mixture
+            .iter()
+            .any(|i| i.count > 0 && i.particle.species.confinement_only());
+        if quarks && !self.forces.strong {
+            out.push("kwarki tylko w laboratorium uwięzienia".to_string());
+        }
+
         if self.forces.strong
             && !self
                 .spawn
@@ -281,6 +301,19 @@ impl Config {
             out.push(
                 "oddziaływanie silne włączone, ale żadna cząstka nie niesie koloru".to_string(),
             );
+        }
+
+        if self.forces.strong {
+            let colored: usize = self
+                .spawn
+                .mixture
+                .iter()
+                .filter(|i| i.particle.colored())
+                .map(|i| i.count)
+                .sum();
+            if colored != 2 {
+                out.push("uwięzienie to jedna para qq̄ — Cornell bez pękania struny".to_string());
+            }
         }
 
         // Sedno problemu dwóch skal czasu: krok albo rozdziela siły, albo dożywa
@@ -407,6 +440,19 @@ mod tests {
             Ingredient::new(Particle::anti_of(Species::Up), 2),
         ];
         assert!(!cfg.warnings().iter().any(|w| w.contains("koloru")));
+        assert!(cfg.warnings().iter().any(|w| w.contains("jedna para")));
+    }
+
+    #[test]
+    fn catalog_only_species_in_the_mixture_are_announced() {
+        let mut cfg = Config::default();
+        cfg.spawn.mixture = vec![Ingredient::new(Particle::of(Species::WBoson), 1)];
+        cfg.forces.coulomb = false;
+        assert!(
+            cfg.warnings().iter().any(|w| w.contains("katalogu mas")),
+            "{:?}",
+            cfg.warnings()
+        );
     }
 
     /// Bieg krótszy od czasu życia o trzy rzędy wielkości nie pokaże rozpadów.

@@ -35,12 +35,7 @@ pub fn make_state(cfg: &Config) -> Spawned {
     let mut rng = Rng::seeded(cfg.spawn.seed);
     let mut warnings = Vec::new();
 
-    let kinds: Vec<Particle> = cfg
-        .spawn
-        .mixture
-        .iter()
-        .flat_map(|ingredient| std::iter::repeat_n(ingredient.particle, ingredient.count))
-        .collect();
+    let kinds: Vec<Particle> = spawnable_kinds(cfg, &mut warnings);
     let n = kinds.len();
     if n == 0 {
         return Spawned {
@@ -100,6 +95,36 @@ pub fn make_state(cfg: &Config) -> Spawned {
 
     let state = State::new(positions, momenta, kinds).expect("trzy tablice o tej samej długości");
     Spawned { state, warnings }
+}
+
+/// W, Z, H, t i gluony zostają w katalogu. Kwarki — tylko przy Cornelli.
+fn spawnable_kinds(cfg: &Config, warnings: &mut Vec<String>) -> Vec<Particle> {
+    let strong = cfg.forces.strong;
+    let mut dropped: Vec<&'static str> = Vec::new();
+    let kinds: Vec<Particle> = cfg
+        .spawn
+        .mixture
+        .iter()
+        .flat_map(|ingredient| std::iter::repeat_n(ingredient.particle, ingredient.count))
+        .filter(|particle| {
+            if particle.species.may_spawn(strong) {
+                true
+            } else {
+                dropped.push(particle.data().name);
+                false
+            }
+        })
+        .collect();
+    dropped.sort_unstable();
+    dropped.dedup();
+    if !dropped.is_empty() {
+        warnings.push(format!(
+            "poza gazem, nie postawiono: {} — W, Z, H, t i gluony zostają w katalogu; \
+             kwarki tylko w uwięzieniu",
+            dropped.join(", ")
+        ));
+    }
+    kinds
 }
 
 /// Pęd termiczny właściwy dla masy cząstki.
@@ -383,5 +408,43 @@ mod tests {
         );
         cfg.spawn.temperature = 500.0;
         assert!(make_state(&cfg).warnings.is_empty());
+    }
+
+    /// W, Z, H, t i gluony nie wchodzą do gazu nawet jeśli ktoś wpisze je w mieszankę.
+    #[test]
+    fn catalog_only_species_do_not_enter_the_gas() {
+        let cfg = config(
+            Shape::Ball,
+            vec![
+                Ingredient::new(Particle::of(Species::Electron), 4),
+                Ingredient::new(Particle::of(Species::WBoson), 3),
+                Ingredient::new(Particle::of(Species::Higgs), 1),
+                Ingredient::new(Particle::of(Species::Gluon), 2),
+                Ingredient::new(Particle::of(Species::Top), 1),
+            ],
+        );
+        let spawned = make_state(&cfg);
+        assert_eq!(spawned.state.n(), 4);
+        assert_eq!(spawned.state.count_of(Particle::of(Species::Electron)), 4);
+        assert!(
+            spawned.warnings.iter().any(|w| w.contains("katalogu")),
+            "{:?}",
+            spawned.warnings
+        );
+    }
+
+    /// Kwark bez Cornella nie startuje w gazie — uwięzienie to osobne laboratorium.
+    #[test]
+    fn quarks_without_the_strong_force_are_dropped() {
+        let cfg = config(
+            Shape::Pair,
+            vec![
+                Ingredient::new(Particle::of(Species::Up), 1),
+                Ingredient::new(Particle::anti_of(Species::Up), 1),
+            ],
+        );
+        let spawned = make_state(&cfg);
+        assert!(spawned.state.is_empty());
+        assert!(spawned.warnings.iter().any(|w| w.contains("uwięzieniu")));
     }
 }
