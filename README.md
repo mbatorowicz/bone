@@ -311,11 +311,17 @@ cosmo/
                  diagnostics, engine, presets
     qm/          units, hydrogen, elements, plot, sample, engine, presets
     io/          binary, checkpoint, trajectory
+    constants.rs CODATA 2022, PDG 2025 — jedno źródło stałych
     session.rs   wspólna pętla: krok, diagnostyka, zapis
     cli.rs       bieg wsadowy
   ui/            bone-ui — kamera, renderer, panel, odtwarzacz
   app/           binarka BoneCosmo
 ```
+
+Stałe katalogowe nie żyją w `sm` ani w `qm` osobno: α, ħc i masy e/p/n
+są w `constants.rs`, a wartości pochodne (`r_e`, `τ = ħ/Γ`, Rydberg) z nich
+wynikają. Audyt z 9 września 2026, z tabelą zmian i tym, co zostawiono
+świadomie: [`docs/audyt.md`](docs/audyt.md).
 
 Modele `sr` i `lcdm` różnią się kinematyką i warunkami początkowymi, nie sposobem
 liczenia grawitacji — dlatego `mesh`, `grid`, `fft`, `vec3` i `rng` są wspólne.
