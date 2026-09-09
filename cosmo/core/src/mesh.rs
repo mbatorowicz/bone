@@ -1,9 +1,10 @@
-//! Particle-Mesh z izolowanymi brzegami — grawitacja wszystkich par w O(N + M log M).
+//! Particle-Mesh: izolowane brzegi (Hockney) albo periodyczne.
 //!
 //! Koszt zależy od siatki, nie od liczby par, więc milion cząstek liczy się tyle
 //! samo co sto tysięcy. Wszystkie pary wchodzą do wyniku; ograniczeniem jest
 //! rozdzielczość przestrzenna (oczko siatki), a nie to, ilu sąsiadów zdążyliśmy
-//! policzyć.
+//! policzyć. Domyślny konstruktor zostawia brzegi izolowane — N-ciała i cząstki
+//! nie mogą przypadkiem dostać kopii pudła.
 //!
 //! # Izolowane brzegi
 //!
@@ -14,6 +15,13 @@
 //! oznacza ujemną odległość). Splot cykliczny na takiej siatce jest równy splotowi
 //! liniowemu na obszarze oryginalnym, czyli układ jest naprawdę otwarty — bez kopii
 //! i bez odbić.
+//!
+//! # Periodyczne brzegi
+//!
+//! Siatka bez dopełnienia, jądro `−4πG/k²` w przestrzeni Fouriera, tryb `k = 0`
+//! wyzerowany (jednorodne tło nie daje siły). Dekonwolucja CIC jest ta sama.
+//! Gradient zawija indeksy. To jest solver pod wycinek wszechświata z kopiami;
+//! podłączenie ΛCDM jest osobnym krokiem.
 //!
 //! Potencjał liczymy splotem z jądrem Plummera, a przyspieszenie różnicą skończoną
 //! czwartego rzędu na siatce. To dwie transformaty na krok zamiast czterech; przy
@@ -66,9 +74,20 @@ const DECONV_CLAMP: f32 = 4.0;
 /// Najmniejsza sensowna siatka. Poniżej tego marginesy zjadają cały obszar.
 const MIN_GRID: usize = 16;
 
+/// Brzeg solvera PM. Domyślnie izolowany — periodyczny nie wolno dostać się
+/// do N-ciał ani cząstek przez pomyłkę w sygnaturze.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Boundary {
+    /// Dopełnienie 2×, jądro Plummera, metoda Hockneya.
+    Isolated,
+    /// Siatka 1×, jądro `−4πG/k²`, `k = 0` wyzerowane.
+    Periodic,
+}
+
 pub struct Mesh {
     grid: usize,
     margin: f64,
+    boundary: Boundary,
     box_: Option<Box>,
     /// Rzeczywiste widmo jądra — patrz uwaga w nagłówku modułu.
     kernel_ft: Vec<f32>,
@@ -83,7 +102,7 @@ pub struct Mesh {
     pub refits: u32,
 }
 
-/// Klucz cache'u jądra. Jądro zależy wyłącznie od tych czterech liczb, więc jego
+/// Klucz cache'u jądra. Jądro zależy wyłącznie od tych liczb, więc jego
 /// przebudowa przy niezmienionych parametrach byłaby czystą stratą.
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct KernelKey {
@@ -91,15 +110,21 @@ struct KernelKey {
     h: f64,
     g: f64,
     softening: f64,
+    boundary: Boundary,
 }
 
 impl Mesh {
     pub fn new(grid: usize, margin: f64) -> Self {
+        Self::with_boundary(grid, margin, Boundary::Isolated)
+    }
+
+    pub fn with_boundary(grid: usize, margin: f64, boundary: Boundary) -> Self {
         let grid = grid.max(MIN_GRID);
         let cells = grid * grid * grid;
         Self {
             grid,
             margin,
+            boundary,
             box_: None,
             kernel_ft: Vec::new(),
             kernel_key: None,
@@ -118,6 +143,10 @@ impl Mesh {
         self.grid
     }
 
+    pub fn boundary(&self) -> Boundary {
+        self.boundary
+    }
+
     pub fn box_(&self) -> Option<Box> {
         self.box_
     }
@@ -128,7 +157,10 @@ impl Mesh {
     }
 
     fn padded(&self) -> usize {
-        2 * self.grid
+        match self.boundary {
+            Boundary::Isolated => 2 * self.grid,
+            Boundary::Periodic => self.grid,
+        }
     }
 
     /// Dopasuj pudło, jeśli chmura z niego wyszła albo zrobiła się o wiele mniejsza.
@@ -157,24 +189,31 @@ impl Mesh {
             h: box_.h,
             g,
             softening,
+            boundary: self.boundary,
         };
         if self.kernel_key == Some(key) {
             return;
         }
         let p = self.padded();
         let pn = p * p * p;
-        self.scratch.resize(pn, Complex::new(0.0, 0.0));
-        build_kernel(&mut self.scratch, p, box_.h, g, softening);
-        self.fft.run(&mut self.scratch, p, Direction::Forward);
-
         self.kernel_ft.resize(pn, 0.0);
-        let deconv = CicDeconvolution::new(p);
-        for iz in 0..p {
-            for iy in 0..p {
-                for ix in 0..p {
-                    let idx = (iz * p + iy) * p + ix;
-                    self.kernel_ft[idx] = self.scratch[idx].re * deconv.at(ix, iy, iz);
+        match self.boundary {
+            Boundary::Isolated => {
+                self.scratch.resize(pn, Complex::new(0.0, 0.0));
+                build_kernel(&mut self.scratch, p, box_.h, g, softening);
+                self.fft.run(&mut self.scratch, p, Direction::Forward);
+                let deconv = CicDeconvolution::new(p);
+                for iz in 0..p {
+                    for iy in 0..p {
+                        for ix in 0..p {
+                            let idx = (iz * p + iy) * p + ix;
+                            self.kernel_ft[idx] = self.scratch[idx].re * deconv.at(ix, iy, iz);
+                        }
+                    }
                 }
+            }
+            Boundary::Periodic => {
+                build_periodic_kernel(&mut self.kernel_ft, p, box_.h, g);
             }
         }
         self.kernel_key = Some(key);
@@ -192,8 +231,17 @@ impl Mesh {
         }
     }
 
-    /// `Φ = (−G/r) ∗ ρ` przez splot liniowy (padding Hockneya), potem `a = −∇Φ`.
+    /// `Φ = (−G/r) ∗ ρ` przez splot liniowy (padding Hockneya), albo periodyczne
+    /// `Φ_k = −4πG ρ_k / k²`. Potem `a = −∇Φ`.
     fn solve(&mut self, box_: Box) {
+        match self.boundary {
+            Boundary::Isolated => self.solve_isolated(),
+            Boundary::Periodic => self.solve_periodic(),
+        }
+        self.gradient_fourth_order(box_.h);
+    }
+
+    fn solve_isolated(&mut self) {
         let ng = self.grid;
         let p = self.padded();
         self.scratch.resize(p * p * p, Complex::new(0.0, 0.0));
@@ -224,24 +272,63 @@ impl Mesh {
                 }
             }
         }
-        self.gradient_fourth_order(box_.h);
+    }
+
+    fn solve_periodic(&mut self) {
+        let ng = self.grid;
+        let n = ng * ng * ng;
+        self.scratch.resize(n, Complex::new(0.0, 0.0));
+        for iz in 0..ng {
+            for iy in 0..ng {
+                for ix in 0..ng {
+                    let src = (ix * ng + iy) * ng + iz;
+                    let dst = (iz * ng + iy) * ng + ix;
+                    self.scratch[dst] = Complex::new(self.density[src], 0.0);
+                }
+            }
+        }
+        self.fft.run(&mut self.scratch, ng, Direction::Forward);
+        self.scratch
+            .par_iter_mut()
+            .zip(self.kernel_ft.par_iter())
+            .for_each(|(value, k)| *value *= *k);
+        self.fft.run(&mut self.scratch, ng, Direction::Inverse);
+
+        let norm = 1.0 / n as f32;
+        for iz in 0..ng {
+            for iy in 0..ng {
+                for ix in 0..ng {
+                    let src = (iz * ng + iy) * ng + ix;
+                    let dst = (ix * ng + iy) * ng + iz;
+                    self.potential_grid[dst] = self.scratch[src].re * norm;
+                }
+            }
+        }
     }
 
     /// `a = −∇Φ` różnicą centralną czwartego rzędu.
     ///
-    /// Odczyt poza siatką jest dosuwany do skrajnej komórki, a nie zawijany.
-    /// Margines `EDGE_CELLS` gwarantuje, że żadna cząstka nie czyta tych komórek,
-    /// więc różnica jest bez znaczenia dla wyniku — ale zawijanie wprowadzałoby
-    /// periodyczność właśnie tam, gdzie ta metoda ma jej nie mieć.
+    /// Odczyt poza siatką: izolowany dosuwa do skrajnej komórki, periodyczny zawija.
+    /// Margines `EDGE_CELLS` gwarantuje, że w trybie izolowanym żadna cząstka nie
+    /// czyta komórek przy ścianie, więc różnica jest bez znaczenia dla wyniku —
+    /// ale zawijanie wprowadzałoby periodyczność właśnie tam, gdzie izolowany
+    /// solver ma jej nie mieć.
     fn gradient_fourth_order(&mut self, h: f64) {
         let ng = self.grid;
         let scale = (1.0 / (12.0 * h)) as f32;
+        let wrap = matches!(self.boundary, Boundary::Periodic);
         let phi = &self.potential_grid;
         let at = |ix: i64, iy: i64, iz: i64| -> f32 {
-            let top = ng as i64 - 1;
-            let ix = ix.clamp(0, top) as usize;
-            let iy = iy.clamp(0, top) as usize;
-            let iz = iz.clamp(0, top) as usize;
+            let idx = |v: i64| -> usize {
+                if wrap {
+                    v.rem_euclid(ng as i64) as usize
+                } else {
+                    v.clamp(0, ng as i64 - 1) as usize
+                }
+            };
+            let ix = idx(ix);
+            let iy = idx(iy);
+            let iz = idx(iz);
             phi[(ix * ng + iy) * ng + iz]
         };
         self.accel_grid
@@ -347,7 +434,10 @@ impl Mesh {
     }
 
     pub fn describe(&self) -> String {
-        let head = format!("mesh {}³→{}³", self.grid, 2 * self.grid);
+        let head = match self.boundary {
+            Boundary::Isolated => format!("mesh {}³→{}³", self.grid, 2 * self.grid),
+            Boundary::Periodic => format!("mesh {}³ periodyczny", self.grid),
+        };
         match (self.box_, self.last_softening) {
             (Some(b), Some(eps)) => {
                 let mut out = format!("{head}, oczko {:.3}", b.h);
@@ -374,6 +464,36 @@ fn build_kernel(out: &mut [Complex<f32>], padded: usize, h: f64, g: f64, softeni
                 let r2 = x * x + y * y + z * z;
                 let value = -g / (r2 + eps2).sqrt();
                 out[(iz * padded + iy) * padded + ix] = Complex::new(value as f32, 0.0);
+            }
+        }
+    }
+}
+
+/// Periodyczne jądro Poissona w przestrzeni Fouriera: `Φ_k = −4πG ρ_k / k²`.
+///
+/// `density` trzyma masę w komórce, więc `ρ = m / h³` wchodzi do jądra jako `1/h³`.
+/// Tryb `k = 0` jest zerem: jednorodne tło na torusie nie daje siły.
+fn build_periodic_kernel(out: &mut [f32], ng: usize, h: f64, g: f64) {
+    let l = ng as f64 * h;
+    let two_pi_over_l = 2.0 * std::f64::consts::PI / l;
+    let four_pi_g = 4.0 * std::f64::consts::PI * g;
+    let h3 = h * h * h;
+    let half = (ng / 2) as i64;
+    let deconv = CicDeconvolution::new(ng);
+    for iz in 0..ng {
+        for iy in 0..ng {
+            for ix in 0..ng {
+                let idx = (iz * ng + iy) * ng + ix;
+                if ix == 0 && iy == 0 && iz == 0 {
+                    out[idx] = 0.0;
+                    continue;
+                }
+                let nx = wrapped_offset(ix, ng, half);
+                let ny = wrapped_offset(iy, ng, half);
+                let nz = wrapped_offset(iz, ng, half);
+                let k2 = two_pi_over_l * two_pi_over_l * (nx * nx + ny * ny + nz * nz);
+                let green = -four_pi_g / (k2 * h3);
+                out[idx] = (green as f32) * deconv.at(ix, iy, iz);
             }
         }
     }
@@ -641,5 +761,67 @@ mod tests {
         };
         let expected = -G / 0.5;
         assert!((self_energy(&s, &kernel) - expected).abs() < 1e-12);
+    }
+
+    #[test]
+    fn default_constructor_is_isolated() {
+        let mesh = Mesh::new(16, 0.15);
+        assert_eq!(mesh.boundary(), Boundary::Isolated);
+        assert_eq!(mesh.padded(), 32);
+    }
+
+    /// Na torusie jednorodna gęstość to wyłącznie tryb `k = 0`, a ten tryb jest
+    /// wyzerowany — siła musi zniknąć wszędzie, nie tylko w średniej.
+    #[test]
+    fn periodic_uniform_density_has_vanishing_force() {
+        let ng = 32;
+        let h = 1.0;
+        let mut mesh = Mesh::with_boundary(ng, 0.15, Boundary::Periodic);
+        mesh.box_ = Some(crate::grid::Box {
+            origin: ZERO,
+            h,
+            ng,
+            edge: 0,
+        });
+        mesh.density.fill(1.0);
+        let box_ = mesh.box_.expect("pudło");
+        mesh.ensure_kernel(box_, G, h);
+        mesh.solve(box_);
+        let max_a = mesh
+            .accel_grid
+            .iter()
+            .map(|a| (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt())
+            .fold(0.0f32, f32::max);
+        assert!(
+            max_a < 1e-5,
+            "siła na jednorodnej siatce periodycznej: {max_a}"
+        );
+    }
+
+    /// Zgęstek na tle jednorodnym musi przyciągać — inaczej jądro mogłoby być zerem
+    /// wszędzie i test jednorodności i tak by przeszedł.
+    #[test]
+    fn periodic_overdensity_attracts() {
+        let ng = 32;
+        let h = 1.0;
+        let mut mesh = Mesh::with_boundary(ng, 0.15, Boundary::Periodic);
+        mesh.box_ = Some(crate::grid::Box {
+            origin: ZERO,
+            h,
+            ng,
+            edge: 0,
+        });
+        mesh.density.fill(1.0);
+        let c = ng / 2;
+        mesh.density[(c * ng + c) * ng + c] += 80.0;
+        let box_ = mesh.box_.expect("pudło");
+        mesh.ensure_kernel(box_, G, h);
+        mesh.solve(box_);
+        let right = ((c + 3) * ng + c) * ng + c;
+        let a_x = mesh.accel_grid[right][0];
+        assert!(
+            a_x < 0.0,
+            "zgęstek powinien przyciągać z prawej: a_x={a_x}"
+        );
     }
 }
