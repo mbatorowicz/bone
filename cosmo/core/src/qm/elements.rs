@@ -1,11 +1,10 @@
 //! Pierwiastki, konfiguracje elektronowe i reguły Slatera.
 //!
-//! Atom wieloelektronowy nie ma tu dokładnego rozwiązania Schrödingera — nikt
-//! go nie ma w postaci zamkniętej. Każdy elektron żyje w wodoropodobnym orbitalu
-//! z ładunkiem efektywnym `Z_eff = Z − σ`, a `σ` pochodzi z reguł Slatera (1930).
-//! To jest **przybliżenie niezależnych cząstek**, nie mechanika kwantowa atomu.
-//! Diagnostyka porównuje energię orbitalu walencyjnego z pierwszą energią
-//! jonizacji z tablic i **pokazuje błąd**, zamiast udawać, że go nie ma.
+//! Hel ma osobną wariację w [`crate::qm::helium`]. Slater zostaje jako lekcja
+//! ekranowania: każdy elektron w wodoropodobnym orbitalu z `Z_eff = Z − σ`
+//! (Slater 1930). To jest **przybliżenie niezależnych cząstek**. Diagnostyka
+//! porównuje energię orbitalu walencyjnego z pierwszą jonizacją NIST i
+//! **pokazuje błąd** — albo milczy, gdy atom jest za ciężki na tę reklamę.
 
 use crate::qm::hydrogen::{orbital_label, quantum_ok};
 use crate::qm::units::{self, PROTON_ELECTRON_MASS};
@@ -315,8 +314,18 @@ pub fn valence_ionization_ev(element: &Element) -> Option<f64> {
     valence_energy_hartree(element).map(|e| -units::hartree_to_ev(e))
 }
 
+/// Slater pokazuje IE tylko dla lekkich atomów. Fe/Cu/Au/U to Aufbau:
+/// konfiguracja, nie energia.
+pub fn reports_ionization(element: &Element) -> bool {
+    element.z <= 18
+}
+
 /// Względny błąd IE: `(model − doświadczenie) / doświadczenie`.
+/// `None` gdy model nie reklamuje jonizacji (ciężkie atomy).
 pub fn ionization_error(element: &Element) -> Option<f64> {
+    if !reports_ionization(element) {
+        return None;
+    }
     let model = valence_ionization_ev(element)?;
     if element.ionization_ev == 0.0 {
         return None;
@@ -384,6 +393,14 @@ mod tests {
         assert!(model > 30.0, "{model}");
         let err = ionization_error(he).unwrap();
         assert!(err.abs() > 0.2, "błąd He powinien być duży, jest {err}");
+    }
+
+    #[test]
+    fn iron_does_not_advertise_ionization() {
+        let fe = by_z(26).unwrap();
+        assert!(!reports_ionization(fe));
+        assert!(ionization_error(fe).is_none());
+        assert!(valence_ionization_ev(fe).is_some());
     }
 
     #[test]

@@ -35,6 +35,10 @@ enum Catalog {
         electrons: Vec<Occupied>,
         mu: f64,
     },
+    Helium {
+        zeta: f64,
+        mu: f64,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -98,6 +102,13 @@ impl Catalog {
                     mu: el.reduced_mass(),
                 })
             }
+            Scene::Helium => {
+                let el = elements::nearest(2);
+                Ok(Self::Helium {
+                    zeta: crate::qm::helium::ZETA,
+                    mu: el.reduced_mass(),
+                })
+            }
         }
     }
 
@@ -105,6 +116,7 @@ impl Catalog {
         match self {
             Self::Orbital { z, n, l, m, .. } => density(*z, *n, *l, *m, p.x, p.y, p.z),
             Self::Superposition { z, terms, .. } => superposition_density(*z, terms, p, time),
+            Self::Helium { zeta, .. } => density(*zeta, 1, 0, 0, p.x, p.y, p.z),
             Self::Atom { .. } => 0.0,
         }
     }
@@ -120,14 +132,16 @@ impl Catalog {
                 .iter()
                 .map(|e| mean_radius(e.z_eff, e.n, e.l))
                 .fold(1.0, f64::max),
+            Self::Helium { zeta, .. } => mean_radius(*zeta, 1, 0),
         }
     }
 
     fn mu(&self) -> f64 {
         match self {
-            Self::Orbital { mu, .. } | Self::Superposition { mu, .. } | Self::Atom { mu, .. } => {
-                *mu
-            }
+            Self::Orbital { mu, .. }
+            | Self::Superposition { mu, .. }
+            | Self::Atom { mu, .. }
+            | Self::Helium { mu, .. } => *mu,
         }
     }
 }
@@ -242,15 +256,36 @@ impl Engine {
     pub fn describe(&self) -> String {
         let exact = match &self.cfg.scene {
             Scene::Orbital { .. } | Scene::Superposition { .. } => "dokładny Schrödinger",
-            Scene::Atom { .. } => "Slater Z_eff",
+            Scene::Helium => "wariacja ζ=27/16",
+            Scene::Atom { z } => {
+                let el = elements::nearest(*z);
+                if elements::reports_ionization(el) {
+                    "Slater Z_eff"
+                } else {
+                    "Aufbau (konfiguracja)"
+                }
+            }
         };
         format!("{} · {}", self.cfg.scene.label(), exact)
     }
 
     pub fn accuracy_hint(&self) -> Option<String> {
         match &self.cfg.scene {
+            Scene::Helium => {
+                let err = crate::qm::helium::energy_error();
+                Some(format!(
+                    "wariacja He {:+.1}% vs −2.904 Ha",
+                    100.0 * err
+                ))
+            }
             Scene::Atom { z } => {
                 let el = elements::nearest(*z);
+                if !elements::reports_ionization(el) {
+                    return Some(format!(
+                        "{}: konfiguracja Aufbau, bez IE",
+                        el.symbol
+                    ));
+                }
                 elements::ionization_error(el).and_then(|err| {
                     if err.abs() > 0.15 {
                         Some(format!(
@@ -308,6 +343,7 @@ fn sample_cloud(catalog: &Catalog, cfg: &Config, time: f64) -> (Vec<Vec3>, Vec<f
             )
         }
         Catalog::Atom { electrons, .. } => sample_atom(electrons, n, seed),
+        Catalog::Helium { zeta, .. } => sample_helium(*zeta, n, seed),
     };
     let shades = shades_for(catalog, &positions, time);
     (positions, shades)
@@ -331,6 +367,25 @@ fn sample_atom(electrons: &[Occupied], n: usize, seed: u64) -> Vec<Vec3> {
     out
 }
 
+fn sample_helium(zeta: f64, n: usize, seed: u64) -> Vec<Vec3> {
+    // Iloczyn φ(r₁)φ(r₂): chmura to dwa niezależne elektrony w 1s(ζ).
+    let electrons = [
+        Occupied {
+            n: 1,
+            l: 0,
+            m: 0,
+            z_eff: zeta,
+        },
+        Occupied {
+            n: 1,
+            l: 0,
+            m: 0,
+            z_eff: zeta,
+        },
+    ];
+    sample_atom(&electrons, n, seed)
+}
+
 fn shades_for(catalog: &Catalog, positions: &[Vec3], time: f64) -> Vec<f32> {
     match catalog {
         Catalog::Orbital { z, n, l, m, .. } => positions
@@ -349,29 +404,32 @@ fn shades_for(catalog: &Catalog, positions: &[Vec3], time: f64) -> Vec<f32> {
                 (0.25 + 0.55 * axis + 0.15 * (d / (d + 1e-4)).min(1.0)) as f32
             })
             .collect(),
-        Catalog::Atom { electrons, .. } => {
-            let n_max = electrons.iter().map(|e| e.n).max().unwrap_or(1);
-            let mut shades = Vec::with_capacity(positions.len());
-            if electrons.is_empty() {
-                return vec![0.5; positions.len()];
-            }
-            let chunk = (positions.len() / electrons.len()).max(1);
-            for (i, e) in electrons.iter().enumerate() {
-                let start = i * chunk;
-                let end = if i + 1 == electrons.len() {
-                    positions.len()
-                } else {
-                    ((i + 1) * chunk).min(positions.len())
-                };
-                let t = (e.n - 1) as f32 / n_max.max(1) as f32;
-                for _ in start..end {
-                    shades.push(0.22 + 0.72 * t);
-                }
-            }
-            shades.resize(positions.len(), 0.5);
-            shades
+        Catalog::Atom { electrons, .. } => atom_shades(electrons, positions.len()),
+        Catalog::Helium { .. } => vec![0.55; positions.len()],
+    }
+}
+
+fn atom_shades(electrons: &[Occupied], n: usize) -> Vec<f32> {
+    let n_max = electrons.iter().map(|e| e.n).max().unwrap_or(1);
+    let mut shades = Vec::with_capacity(n);
+    if electrons.is_empty() {
+        return vec![0.5; n];
+    }
+    let chunk = (n / electrons.len()).max(1);
+    for (i, e) in electrons.iter().enumerate() {
+        let start = i * chunk;
+        let end = if i + 1 == electrons.len() {
+            n
+        } else {
+            ((i + 1) * chunk).min(n)
+        };
+        let t = (e.n - 1) as f32 / n_max.max(1) as f32;
+        for _ in start..end {
+            shades.push(0.22 + 0.72 * t);
         }
     }
+    shades.resize(n, 0.5);
+    shades
 }
 
 fn lobe_shade(psi: f64) -> f32 {

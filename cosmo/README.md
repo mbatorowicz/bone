@@ -7,8 +7,8 @@ Cztery laboratoria na jednym komputerze: N-ciała, kosmologia, cząstki i atomy.
 - **N-ciała** (`sr`) — Newton + kinematyka SR, odosobniona chmura,
   opcjonalna dyssypacja. Nie OTW.
 - **Cząstki** (`sm`) — klasyczny gaz + rozpady PDG. To nie jest QFT.
-- **Atomy** (`qm`) — Schrödinger · `|ψ|²`. Wodór dokładny, reszta Slater
-  z mierzonym błędem jonizacji.
+- **Atomy** (`qm`) — Schrödinger · `|ψ|²`. Wodór dokładny, hel wariacyjny
+  (~2%), Slater jako lekcja ekranowania.
 
 Liczy na tym komputerze (FFT + wgpu do okna). Nie używa Vercela.
 

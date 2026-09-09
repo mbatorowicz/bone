@@ -338,17 +338,19 @@ impl Atoms {
         if let Some(err) = s.ionization_error {
             rows.push(("błąd IE", format!("{:>+9.1}%", 100.0 * err)));
         }
+        if let Some(e) = s.variational_hartree {
+            rows.push(("E wariacja [Ha]", format!("{:>10.4}", e)));
+        }
+        if let Some(e) = s.exact_hartree {
+            rows.push(("E dokładne [Ha]", format!("{:>10.4}", e)));
+        }
+        if let Some(err) = s.energy_error {
+            rows.push(("błąd E", format!("{:>+9.1}%", 100.0 * err)));
+        }
         if let Some(t) = s.beat_period {
             rows.push(("okres bicia [j.a.]", format!("{:>10.3}", t)));
         }
-        rows.push((
-            "opis",
-            if s.exact {
-                "dokładny Schrödinger".into()
-            } else {
-                "Slater Z_eff".into()
-            },
-        ));
+        rows.push(("opis", s.method.into()));
         rows
     }
 

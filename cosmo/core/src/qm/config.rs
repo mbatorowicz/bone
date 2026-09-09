@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::qm::elements::{self, Element};
 use crate::qm::hydrogen::{self, quantum_ok};
 
+/// Jony wodoropodobne na scenie orbitalnej: H i He⁺. Większe Z to już
+/// nie „dokładny atom", tylko jon, którego nikt tu nie prosi.
+const HYDROGENIC_Z_MAX: u32 = 2;
+
 /// Składnik superpozycji. Amplitudy nie muszą być unormowane — silnik znormuje
 /// je przy starcie, a suwak „mieszanka" w panelu ustawia stosunek dwóch pierwszych.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -44,7 +48,10 @@ pub enum Scene {
     /// gdy energie się różnią — to jedyna scena, w której chmura naprawdę żyje.
     Superposition { z: u32, terms: Vec<Term> },
     /// Neutralny atom: elektrony niezależne, `Z_eff` ze Slatera.
+    /// Dla Z ≤ 18 diagnostyka pokazuje błąd IE; cięższe to Aufbau bez energetyki.
     Atom { z: u32 },
+    /// Hel: wariacja `ψ = e^{−ζ r₁} e^{−ζ r₂}`, `ζ = 27/16`.
+    Helium,
 }
 
 impl Default for Scene {
@@ -62,6 +69,7 @@ impl Scene {
     pub fn z(&self) -> u32 {
         match *self {
             Self::Orbital { z, .. } | Self::Superposition { z, .. } | Self::Atom { z } => z.max(1),
+            Self::Helium => 2,
         }
     }
 
@@ -75,7 +83,7 @@ impl Scene {
                 let energies: Vec<u32> = terms.iter().map(|t| t.n).collect();
                 energies.windows(2).any(|w| w[0] != w[1])
             }
-            Self::Orbital { .. } | Self::Atom { .. } => false,
+            Self::Orbital { .. } | Self::Atom { .. } | Self::Helium => false,
         }
     }
 
@@ -93,6 +101,7 @@ impl Scene {
                     .map(|s| (z, s.n, s.l, 0))
                     .unwrap_or((z, 1, 0, 0))
             }
+            Self::Helium => (2, 1, 0, 0),
         }
     }
 
@@ -121,6 +130,7 @@ impl Scene {
                 let el = elements::nearest(*z);
                 format!("{}  {}", el.symbol, el.configuration_text())
             }
+            Self::Helium => "He  wariacja ζ=27/16".into(),
         }
     }
 }
@@ -183,7 +193,12 @@ impl Config {
                 let l = l.min(n - 1);
                 let cap = l as i32;
                 let m = m.clamp(-cap, cap);
-                Scene::Orbital { z: z.max(1), n, l, m }
+                Scene::Orbital {
+                    z: z.clamp(1, HYDROGENIC_Z_MAX),
+                    n,
+                    l,
+                    m,
+                }
             }
             Scene::Superposition { z, terms } => {
                 let mut terms: Vec<Term> = terms
@@ -193,11 +208,15 @@ impl Config {
                 if terms.is_empty() {
                     terms.push(Term::real(1, 0, 0, 1.0));
                 }
-                Scene::Superposition { z: z.max(1), terms }
+                Scene::Superposition {
+                    z: z.clamp(1, HYDROGENIC_Z_MAX),
+                    terms,
+                }
             }
             Scene::Atom { z } => Scene::Atom {
                 z: elements::nearest(z.max(1)).z,
             },
+            Scene::Helium => Scene::Helium,
         };
         out.run.n_samples = out.run.n_samples.clamp(64, 200_000);
         out.run.dt = out.run.dt.abs().max(1e-6);
@@ -207,14 +226,19 @@ impl Config {
     pub fn warnings(&self) -> Vec<String> {
         let mut out = Vec::new();
         match &self.scene {
-            Scene::Orbital { n, l, m, .. } => {
+            Scene::Orbital { z, n, l, m } => {
                 if !quantum_ok(*n, *l, *m) {
                     out.push(format!(
                         "({n},{l},{m}) nie jest dozwolone — l < n i |m| ≤ l; liczby zostaną przycięte"
                     ));
                 }
+                if *z > HYDROGENIC_Z_MAX {
+                    out.push(
+                        "orbital to H albo He⁺ (Z=1 albo 2) — większe Z zostanie przycięte".into(),
+                    );
+                }
             }
-            Scene::Superposition { terms, .. } => {
+            Scene::Superposition { z, terms } => {
                 if terms.len() < 2 {
                     out.push("superpozycja ma mniej niż dwa stany — gęstość nie będzie bić".into());
                 }
@@ -227,6 +251,12 @@ impl Config {
                             .into(),
                     );
                 }
+                if *z > HYDROGENIC_Z_MAX {
+                    out.push(
+                        "superpozycja to H albo He⁺ (Z=1 albo 2) — większe Z zostanie przycięte"
+                            .into(),
+                    );
+                }
             }
             Scene::Atom { z } => {
                 if elements::by_z(*z).is_none() {
@@ -236,23 +266,24 @@ impl Config {
                     ));
                 }
                 let el = elements::nearest(*z);
-                if let Some(err) = elements::ionization_error(el) {
-                    if err.abs() > 0.15 {
-                        out.push(format!(
-                            "Slater na {} myli pierwszą jonizację o {:+.0}% — to granica modelu, nie usterka silnika",
-                            el.symbol,
-                            100.0 * err
-                        ));
+                if elements::reports_ionization(el) {
+                    if let Some(err) = elements::ionization_error(el) {
+                        if err.abs() > 0.15 {
+                            out.push(format!(
+                                "Slater na {} myli pierwszą jonizację o {:+.0}% — to lekcja modelu, nie usterka silnika",
+                                el.symbol,
+                                100.0 * err
+                            ));
+                        }
                     }
-                }
-                if *z >= 26 {
-                    out.push(
-                        "ciężki atom: brak korelacji, wymienności i struktury subtelnej; \
-                         obraz pokazuje powłoki, nie chemię"
-                            .into(),
-                    );
+                } else {
+                    out.push(format!(
+                        "{}: konfiguracja Aufbau, bez IE — Slater nie liczy tu jonizacji",
+                        el.symbol
+                    ));
                 }
             }
+            Scene::Helium => {}
         }
         out
     }
@@ -353,5 +384,35 @@ mod tests {
             ..Config::default()
         };
         assert!(cfg.warnings().iter().any(|w| w.contains("Z=40")));
+    }
+
+    #[test]
+    fn hydrogenic_orbital_clips_z_to_helium() {
+        let cfg = Config {
+            scene: Scene::Orbital {
+                z: 6,
+                n: 1,
+                l: 0,
+                m: 0,
+            },
+            ..Config::default()
+        };
+        match cfg.sanitized().scene {
+            Scene::Orbital { z, .. } => assert_eq!(z, 2),
+            other => panic!("{other:?}"),
+        }
+        assert!(cfg.warnings().iter().any(|w| w.contains("He⁺")));
+    }
+
+    #[test]
+    fn helium_scene_round_trips() {
+        let cfg = Config {
+            scene: Scene::Helium,
+            ..Config::default()
+        };
+        let back = Config::from_json(&cfg.to_json()).unwrap();
+        assert_eq!(back.scene, Scene::Helium);
+        assert_eq!(back.scene.z(), 2);
+        assert!(!back.scene.is_time_dependent());
     }
 }

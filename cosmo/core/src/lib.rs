@@ -11,9 +11,9 @@
 //!   i przybliżenia Zel'dovicha, całkowanie po `ln a`.
 //! - [`sm`] — laboratorium cząstek. Klasyczny gaz + losowe rozpady PDG.
 //!   To nie jest kwantowa teoria pola — granice opisu są wypisane w [`sm`].
-//! - [`qm`] — laboratorium atomów. Wodór i jony wodoropodobne są dokładnym
-//!   rozwiązaniem Schrödingera; wieloelektronowe atomy — przybliżeniem Slatera
-//!   z mierzonym błędem wobec tablic jonizacji. Chmura to próbka `|ψ|²`.
+//! - [`qm`] — laboratorium atomów. Wodór i He⁺ są dokładnym rozwiązaniem
+//!   Schrödingera; hel — wariacją z błędem ~2%; Slater zostaje jako lekcja
+//!   ekranowania z mierzonym błędem IE. Chmura to próbka `|ψ|²`.
 //!
 //! # Co jest wspólne
 //!

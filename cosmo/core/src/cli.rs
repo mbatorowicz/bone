@@ -23,7 +23,7 @@ bone — grawitacja N ciał, cząstki i atomy
     bone sr      [opcje]          odosobniona chmura, kinematyka SR
     bone lcdm    [opcje]          próbka wszechświata ΛCDM (Planck 2018)
     bone sm      [opcje]          Model Standardowy: gaz cząstek elementarnych
-    bone qm      [opcje]          atomy i orbitale (Schrödinger / Slater)
+    bone qm      [opcje]          atomy i orbitale (Schrödinger / wariacja He / Slater)
     bone presety                  wypisz nazwy zestawów nastaw (sr, sm, qm)
     bone --pomoc                  ten opis
 
@@ -45,7 +45,7 @@ Opcje trybu sm:
     --wznow                       wznów z checkpointu w katalogu wyjściowym
 
 Opcje trybu qm:
-    --zestaw NAZWA                wodor | orbital_2p | superpozycja | wegiel | …
+    --zestaw NAZWA                wodor | hel | ekranowanie | superpozycja | …
     --config PLIK                 konfiguracja z pliku JSON
     --czastek N                   liczba próbek chmury |ψ|²
     --wznow                       wznów z checkpointu w katalogu wyjściowym

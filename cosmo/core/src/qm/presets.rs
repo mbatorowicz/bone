@@ -1,8 +1,9 @@
 //! Nazwane zestawy nastaw modelu atomowego — jedno źródło dla CLI i panelu.
 //!
 //! Każdy preset jest hipotezą albo demonstracją, nie galerią ładnych chmur.
-//! `superpozycja` istnieje po to, żeby było widać bicie 1s+2p; `wegiel` — po to,
-//! żeby Slaterowski błąd IE stał obok obrazka powłok.
+//! `superpozycja` istnieje po to, żeby było widać bicie 1s+2p; `hel` — po to,
+//! żeby wariacja dała ~2% błędu; `ekranowanie` — po to, żeby Slaterowski błąd
+//! IE stał obok obrazka powłok.
 
 use crate::qm::config::{Config, RunConfig, Scene, Term};
 
@@ -19,11 +20,8 @@ pub const PRESETS: &[Preset] = &[
     Preset { id: "rydberg", label: "Rydberg", build: rydberg },
     Preset { id: "superpozycja", label: "1s+2p", build: superpozycja },
     Preset { id: "hel_plus", label: "He⁺", build: hel_plus },
-    Preset { id: "hel", label: "Hel", build: hel },
-    Preset { id: "wegiel", label: "Węgiel", build: wegiel },
-    Preset { id: "neon", label: "Neon", build: neon },
-    Preset { id: "sod", label: "Sód", build: sod },
-    Preset { id: "zelazo", label: "Żelazo", build: zelazo },
+    Preset { id: "hel", label: "Hel (wariacja)", build: hel },
+    Preset { id: "ekranowanie", label: "Ekranowanie", build: ekranowanie },
 ];
 
 pub fn preset(id: &str) -> Option<Config> {
@@ -131,29 +129,22 @@ pub fn hel_plus() -> Config {
     }
 }
 
+/// Hel: wariacja `ζ = 27/16`, nie Koopmans+Slater.
 pub fn hel() -> Config {
-    atom(2)
-}
-
-pub fn wegiel() -> Config {
-    atom(6)
-}
-
-pub fn neon() -> Config {
-    atom(10)
-}
-
-pub fn sod() -> Config {
-    atom(11)
-}
-
-pub fn zelazo() -> Config {
-    atom(26)
-}
-
-fn atom(z: u32) -> Config {
     Config {
-        scene: Scene::Atom { z },
+        scene: Scene::Helium,
+        run: RunConfig {
+            n_samples: 16_000,
+            sparkle: false,
+            ..run_cloud()
+        },
+    }
+}
+
+/// Slater na węglu: błąd IE jest tematem karty.
+pub fn ekranowanie() -> Config {
+    Config {
+        scene: Scene::Atom { z: 6 },
         run: RunConfig {
             n_samples: 16_000,
             sparkle: false,
@@ -177,6 +168,7 @@ mod tests {
         }
         assert!(preset("nie-ma").is_none());
         assert_eq!(ids()[0], "wodor");
+        assert!(!ids().iter().any(|id| *id == "zelazo" || *id == "wegiel"));
     }
 
     #[test]
@@ -193,9 +185,26 @@ mod tests {
     }
 
     #[test]
-    fn carbon_is_an_atom_and_hydrogen_is_exact() {
-        assert!(matches!(wegiel().scene, Scene::Atom { z: 6 }));
+    fn helium_is_variational_and_hydrogen_is_exact() {
+        assert!(matches!(hel().scene, Scene::Helium));
+        assert!(matches!(ekranowanie().scene, Scene::Atom { z: 6 }));
         assert!(matches!(wodor().scene, Scene::Orbital { z: 1, n: 1, .. }));
         assert!(matches!(hel_plus().scene, Scene::Orbital { z: 2, .. }));
+    }
+
+    #[test]
+    fn no_preset_advertises_iron_ionization() {
+        for entry in PRESETS {
+            let cfg = (entry.build)();
+            if let Scene::Atom { z } = cfg.scene {
+                let el = crate::qm::elements::nearest(z);
+                assert!(
+                    crate::qm::elements::reports_ionization(el),
+                    "{} reklamuje ciężki atom {}",
+                    entry.id,
+                    el.symbol
+                );
+            }
+        }
     }
 }

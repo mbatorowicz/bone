@@ -5,6 +5,7 @@
 
 use crate::qm::config::{Config, Scene};
 use crate::qm::elements::{self, occupied_orbitals};
+use crate::qm::helium;
 use crate::qm::hydrogen::{self, energy_hartree, mean_radius, radial, radial_probability, real_harmonic};
 use crate::qm::units::{self, hartree_to_ev, wavelength_nm};
 
@@ -56,6 +57,7 @@ pub fn from_config(cfg: &Config) -> Charts {
                 .map(|s| elements::z_eff(el.z, s.n, s.l, el.subshells))
                 .unwrap_or(1.0)
         }
+        Scene::Helium => helium::ZETA,
         _ => z as f64,
     };
     let r_max = (8.0 * mean_radius(z_f, n, l)).max(8.0);
@@ -64,6 +66,7 @@ pub fn from_config(cfg: &Config) -> Charts {
     let angular = sample_angular(l, m, 180);
     let levels = match &cfg.scene {
         Scene::Atom { z } => atom_levels(elements::nearest(*z)),
+        Scene::Helium => helium_levels(),
         Scene::Orbital { z, .. } => hydrogen_levels(*z as f64, n, l, true),
         Scene::Superposition { z, terms } => hydrogen_levels(
             *z as f64,
@@ -73,7 +76,7 @@ pub fn from_config(cfg: &Config) -> Charts {
         ),
     };
     let transitions = match &cfg.scene {
-        Scene::Atom { .. } => Vec::new(),
+        Scene::Atom { .. } | Scene::Helium => Vec::new(),
         _ => rydberg_lines(z as f64, n.max(3)),
     };
     Charts {
@@ -88,6 +91,12 @@ pub fn from_config(cfg: &Config) -> Charts {
 
 fn formula_for(scene: &Scene, n: u32, l: u32) -> &'static str {
     match scene {
+        Scene::Helium => {
+            "E(ζ) = ζ² − 27ζ/8  hartree   ζ = 27/16   (wariacja, nie HF)"
+        }
+        Scene::Atom { z } if !elements::reports_ionization(elements::nearest(*z)) => {
+            "konfiguracja Aufbau — bez energetyki IE"
+        }
         Scene::Atom { .. } => {
             "E ≈ −Z_eff² / (2n²)  hartree   (Slater; to nie jest pełny Hamiltonian)"
         }
@@ -144,6 +153,9 @@ fn hydrogen_levels(z: f64, n_hi: u32, highlight_l: u32, mark: bool) -> Vec<Level
 }
 
 fn atom_levels(element: &elements::Element) -> Vec<Level> {
+    if !elements::reports_ionization(element) {
+        return Vec::new();
+    }
     occupied_orbitals(element)
         .into_iter()
         .map(|o| Level {
@@ -154,6 +166,25 @@ fn atom_levels(element: &elements::Element) -> Vec<Level> {
             label: o.label(),
         })
         .collect()
+}
+
+fn helium_levels() -> Vec<Level> {
+    vec![
+        Level {
+            n: 1,
+            l: 0,
+            e_ev: hartree_to_ev(helium::ENERGY_HARTREE),
+            occupied: 2,
+            label: "wariacja".into(),
+        },
+        Level {
+            n: 1,
+            l: 0,
+            e_ev: hartree_to_ev(helium::EXACT_ENERGY_HARTREE),
+            occupied: 0,
+            label: "He dokładne".into(),
+        },
+    ]
 }
 
 fn rydberg_lines(z: f64, n_hi: u32) -> Vec<Transition> {
@@ -223,6 +254,19 @@ mod tests {
         };
         let charts = from_config(&cfg);
         assert!(!charts.levels.is_empty());
+        assert!(!charts.radial.xs.is_empty());
+    }
+
+    #[test]
+    fn helium_charts_have_variational_formula() {
+        let cfg = Config {
+            scene: Scene::Helium,
+            ..Config::default()
+        };
+        let charts = from_config(&cfg);
+        assert!(charts.formula.contains("27/16"));
+        assert!(charts.transitions.is_empty());
+        assert_eq!(charts.levels.len(), 2);
         assert!(!charts.radial.xs.is_empty());
     }
 }

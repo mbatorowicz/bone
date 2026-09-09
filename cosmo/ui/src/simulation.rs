@@ -1,5 +1,7 @@
 //! Cztery modele i odtwarzanie pod jednym interfejsem panelu i renderera.
 
+use bone_core::qm::config::Scene;
+use bone_core::qm::elements;
 use bone_core::session::Session;
 use bone_core::sr::relativity::Kinematics;
 use bone_core::vec3::Vec3;
@@ -14,7 +16,7 @@ pub enum Mode {
     Cosmological,
     /// Klasyczny gaz cząstek Modelu Standardowego.
     Particles,
-    /// Atomy i orbitale: Schrödinger (wodoropodobne) albo Slater (wieloelektronowe).
+    /// Atomy: dokładny Schrödinger (H, He⁺), wariacja helu, Slater jako lekcja.
     Atoms,
 }
 
@@ -67,8 +69,8 @@ impl Mode {
             },
             Self::Atoms => ModelCard {
                 equation: "ψ_nlm = R_nl Y_lm",
-                scope: "chmura to próbka |ψ|²",
-                comparison: "NIST / Hα",
+                scope: "H / He⁺ dokładne · hel wariacyjny · Slater jako lekcja",
+                comparison: "NIST / Hα · He −2.848 vs −2.904 Ha",
                 not_this: "nie HF, nie cząsteczki",
             },
         }
@@ -89,6 +91,46 @@ pub fn nbody_card(kinematics: Kinematics) -> ModelCard {
             scope: "izolowana chmura · siła Newtona (Plummer)",
             comparison: "wiriał, dryf E · |v| < c z definicji",
             not_this: "nie OTW, nie 1PN, nie fale grawitacyjne",
+        },
+    }
+}
+
+/// Karta atomów zależy od sceny: dokładny Schrödinger, wariacja helu albo Slater.
+pub fn atoms_card(scene: &Scene) -> ModelCard {
+    match scene {
+        Scene::Helium => ModelCard {
+            equation: "ψ = e^{−ζr₁} e^{−ζr₂}, ζ = 27/16",
+            scope: "hel, energia całkowita z wariacji",
+            comparison: "E ≈ −2.848 Ha vs −2.904 Ha · błąd ~2%",
+            not_this: "nie Hartree–Fock, nie korelacja Hylleraasa",
+        },
+        Scene::Atom { z } => {
+            let el = elements::nearest(*z);
+            if elements::reports_ionization(el) {
+                ModelCard {
+                    equation: "Z_eff = Z − σ (Slater 1930)",
+                    scope: "niezależne elektrony, wodoropodobne orbitale",
+                    comparison: "IE modelu vs NIST — błąd jest lekcją",
+                    not_this: "nie HF, nie energia całkowita atomu",
+                }
+            } else {
+                ModelCard {
+                    equation: "Aufbau: konfiguracja powłok",
+                    scope: "obraz powłok, bez energetyki",
+                    comparison: "konfiguracja, nie IE",
+                    not_this: "nie atom Fe — Slater nie liczy tu jonizacji",
+                }
+            }
+        }
+        Scene::Orbital { z, .. } | Scene::Superposition { z, .. } => ModelCard {
+            equation: "ψ_nlm = R_nl Y_lm",
+            scope: if *z <= 2 {
+                "H albo He⁺ · dokładny Schrödinger"
+            } else {
+                "jon wodoropodobny"
+            },
+            comparison: "NIST / Hα",
+            not_this: "nie HF, nie cząsteczki",
         },
     }
 }
@@ -287,6 +329,23 @@ mod tests {
         let atoms = Mode::Atoms.card();
         assert!(atoms.equation.contains("Y_lm"));
         assert!(atoms.not_this.contains("HF"));
+        let helium = atoms_card(&Scene::Helium);
+        assert!(helium.equation.contains("27/16"));
+        assert!(helium.comparison.contains("2%"));
+        assert!(helium.not_this.contains("Hartree"));
+        let slater = atoms_card(&Scene::Atom { z: 6 });
+        assert!(slater.equation.contains("Slater"));
+        assert!(slater.comparison.contains("lekcj"));
+        let aufbau = atoms_card(&Scene::Atom { z: 26 });
+        assert!(aufbau.scope.contains("bez energetyki"));
+        assert!(aufbau.comparison.contains("nie IE"));
+        let orbital = atoms_card(&Scene::Orbital {
+            z: 1,
+            n: 1,
+            l: 0,
+            m: 0,
+        });
+        assert!(orbital.scope.contains("Schrödinger"));
     }
 
     #[test]

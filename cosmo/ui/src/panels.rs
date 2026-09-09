@@ -18,7 +18,7 @@ use bone_core::sr;
 use bone_core::sr::config::{BackendKind, Geometry, Kinematics};
 use bone_core::io::checkpoint;
 use crate::charts;
-use crate::simulation::{nbody_card, Mode, ModelCard, View};
+use crate::simulation::{atoms_card, nbody_card, Mode, ModelCard, View};
 
 /// Nastawy formularza — to, co widzi użytkownik, zanim wciśnie „Uruchom".
 pub struct Setup {
@@ -174,6 +174,7 @@ fn model_card(ui: &mut Ui, setup: &Setup) {
             }
         }
         Mode::Relativistic => nbody_card(setup.sr.physics.kinematics),
+        Mode::Atoms => atoms_card(&setup.qm.scene),
         mode => mode.card(),
     };
     ui.group(|ui| {
@@ -414,7 +415,7 @@ fn atoms_form(ui: &mut Ui, setup: &mut Setup) {
     ui.add_space(6.0);
 
     ui.horizontal_wrapped(|ui| {
-        let z = setup.qm.scene.z();
+        let z = setup.qm.scene.z().clamp(1, 2);
         if ui
             .selectable_label(matches!(setup.qm.scene, Scene::Orbital { .. }), "orbital")
             .clicked()
@@ -423,10 +424,20 @@ fn atoms_form(ui: &mut Ui, setup: &mut Setup) {
             setup.qm.scene = Scene::Orbital { z, n, l, m };
         }
         if ui
-            .selectable_label(matches!(setup.qm.scene, Scene::Atom { .. }), "atom")
+            .selectable_label(matches!(setup.qm.scene, Scene::Helium), "hel")
             .clicked()
         {
-            setup.qm.scene = Scene::Atom { z };
+            setup.qm.scene = Scene::Helium;
+        }
+        if ui
+            .selectable_label(matches!(setup.qm.scene, Scene::Atom { .. }), "ekranowanie")
+            .clicked()
+        {
+            let z_atom = match setup.qm.scene {
+                Scene::Atom { z } => z,
+                _ => 6,
+            };
+            setup.qm.scene = Scene::Atom { z: z_atom };
         }
         if ui
             .selectable_label(
@@ -447,7 +458,7 @@ fn atoms_form(ui: &mut Ui, setup: &mut Setup) {
 
     match &mut setup.qm.scene {
         Scene::Orbital { z, n, l, m } => {
-            ui.add(egui::Slider::new(z, 1..=18).text("Z jądra"));
+            ui.add(egui::Slider::new(z, 1..=2).text("Z jądra"));
             ui.add(egui::Slider::new(n, 1..=8).text("n"));
             let n_now = *n;
             if *l >= n_now {
@@ -457,15 +468,29 @@ fn atoms_form(ui: &mut Ui, setup: &mut Setup) {
             let cap = *l as i32;
             *m = (*m).clamp(-cap, cap);
             ui.add(egui::Slider::new(m, -cap..=cap).text("m"));
+            let species = if *z <= 1 { "H" } else { "He⁺" };
             ui.label(
                 RichText::new(format!(
-                    "{}  ·  l={} ({})  ·  dokładny Schrödinger",
+                    "{}  {}  ·  l={} ({})  ·  dokładny Schrödinger",
+                    species,
                     orbital_label(*n, *l, *m),
                     l,
                     spectroscopic(*l)
                 ))
                 .small()
                 .weak(),
+            );
+        }
+        Scene::Helium => {
+            ui.label(
+                RichText::new("ψ = e^{−ζ r₁} e^{−ζ r₂}  ·  ζ = 27/16")
+                    .small()
+                    .weak(),
+            );
+            ui.label(
+                RichText::new("E = −2.848 Ha  vs  −2.904 Ha  ·  błąd ~2%")
+                    .small()
+                    .weak(),
             );
         }
         Scene::Atom { z } => {
@@ -478,20 +503,26 @@ fn atoms_form(ui: &mut Ui, setup: &mut Setup) {
                 }
             });
             let el = elements::nearest(*z);
-            ui.label(
-                RichText::new(format!(
-                    "{}  Z={}  {}  ·  IE NIST {:.2} eV",
+            let note = if elements::reports_ionization(el) {
+                format!(
+                    "{}  Z={}  {}  ·  IE NIST {:.2} eV  ·  Slater",
                     el.name,
                     el.z,
                     el.configuration_text(),
                     el.ionization_ev
-                ))
-                .small()
-                .weak(),
-            );
+                )
+            } else {
+                format!(
+                    "{}  Z={}  {}  ·  Aufbau, bez IE",
+                    el.name,
+                    el.z,
+                    el.configuration_text()
+                )
+            };
+            ui.label(RichText::new(note).small().weak());
         }
         Scene::Superposition { z, terms } => {
-            ui.add(egui::Slider::new(z, 1..=8).text("Z jądra"));
+            ui.add(egui::Slider::new(z, 1..=2).text("Z jądra"));
             if terms.len() >= 2 {
                 let text = format!(
                     "{} + {}  ·  gęstość bije, gdy n się różnią",

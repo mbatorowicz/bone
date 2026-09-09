@@ -12,10 +12,12 @@ nie nazwy zakładek.
   do dziś.
 - **Cząstki** (`sm`) — klasyczny gaz + losowe rozpady PDG. Gatunki biorą masę,
   ładunek i czas życia z tablicy. To nie jest kwantowa teoria pola.
-- **Atomy** (`qm`) — Schrödinger · `|ψ|²`. Wodór i jony wodoropodobne są
-  dokładnym rozwiązaniem (`ψ_{nlm} = R_{nl} Y_{lm}`). Atomy wieloelektronowe
-  to niezależne elektrony z `Z_eff` Slatera; błąd wobec tablic jonizacji jest
-  mierzony i pokazywany. Chmura na ekranie to próbka gęstości, nie zbiór elektronów.
+- **Atomy** (`qm`) — Schrödinger · `|ψ|²`. Wodór i He⁺ są dokładnym
+  rozwiązaniem (`ψ_{nlm} = R_{nl} Y_{lm}`). Hel to wariacja `ζ = 27/16`
+  z błędem ~2% wobec −2.904 Ha. Slater zostaje jako lekcja ekranowania:
+  błąd IE wobec NIST jest mierzony i pokazywany. Ciężkie atomy (Fe, …)
+  to konfiguracja Aufbau, bez energetyki. Chmura na ekranie to próbka
+  gęstości, nie zbiór elektronów.
 
 Błąd przybliżenia jest **mierzony i pokazywany**, nie zakładany. To jedyna
 liczba, która odróżnia przybliżenie od usterki.
@@ -25,7 +27,7 @@ liczba, która odróżnia przybliżenie od usterki.
 ```bash
 cd cosmo
 cargo build --release          # wynik: target/release/BoneCosmo
-cargo test --workspace         # 447 testów
+cargo test --workspace         # 491 testów
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
@@ -239,10 +241,16 @@ Superpozycja stanów o różnych `n` ewoluuje fazą `e^{−iEt/ħ}`. Gęstość 
 preset `superpozycja` (`1s + 2p_z`) pokazuje ten ruch. To nie jest klasyczna
 orbita.
 
-Atom wieloelektronowy (C, Ne, Na, Fe, …) jest przybliżeniem Slatera: każdy
+Hel jest **wariacją** `ψ = e^{−ζ r₁} e^{−ζ r₂}` z `ζ = 27/16`: energia
+całkowita wychodzi −2.848 Ha wobec −2.904 Ha (błąd ~2%). To jest flagowiec
+atomu wieloelektronowego, nie Slater.
+
+Slater zostaje jako lekcja ekranowania (preset `ekranowanie`, węgiel): każdy
 elektron w wodoropodobnym orbitalu z `Z_eff = Z − σ`. Diagnostyka porównuje
 energię orbitalu walencyjnego z pierwszą jonizacją NIST i **podaje błąd**.
-Na helu ten błąd jest duży (~60%) i to jest wynik, nie usterka.
+Na helu (gdy wybierzesz go jako Slater, nie wariację) ten błąd jest duży
+(~60%) i to jest wynik, nie usterka. Żelazo, miedź, złoto i uran pokazują
+konfigurację Aufbau — bez reklamowania IE jako wyniku modelu.
 
 Panel rysuje funkcje, nie tylko chmurę: `R_{nl}(r)`, `P(r) = r²R²`, `|Y_{lm}|²`
 oraz drabinę poziomów i linie Rydberga (Lyman, Balmer, Paschen). Hα wychodzi
@@ -264,8 +272,9 @@ pytanie.
 | `orbital_3d` | `3d_z²` |
 | `rydberg` | `n=8`, elektron daleko od jądra |
 | `superpozycja` | `1s+2p_z`, bicie gęstości |
-| `hel_plus` | He⁺, nadal jeden elektron |
-| `hel` / `wegiel` / `neon` / `sod` / `zelazo` | Slater, błąd IE w tabeli |
+| `hel_plus` | He⁺, nadal jeden elektron, dokładny Schrödinger |
+| `hel` | wariacja `ζ = 27/16`, E vs −2.904 Ha, błąd ~2% |
+| `ekranowanie` | Slater na węglu, błąd IE jest lekcją |
 
 ## Diagnostyka
 
