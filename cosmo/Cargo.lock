@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "bone-app"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bone-core",
  "bone-ui",
@@ -479,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "bone-core"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "rand",
  "rand_chacha",
@@ -491,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "bone-ui"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bone-core",
  "eframe",
