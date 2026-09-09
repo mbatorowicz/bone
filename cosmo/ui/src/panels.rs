@@ -367,11 +367,6 @@ fn particles_form(ui: &mut Ui, setup: &mut Setup) {
     }
 
     ui.add_space(4.0);
-    ui.label("Oddziaływania");
-    ui.checkbox(&mut setup.sm.forces.coulomb, "Coulomb");
-    ui.checkbox(&mut setup.sm.forces.gravity, "grawitacja");
-    ui.checkbox(&mut setup.sm.forces.strong, "silne");
-    ui.checkbox(&mut setup.sm.forces.weak, "słabe");
     ui.checkbox(&mut setup.sm.decay.enabled, "rozpady");
     ui.checkbox(&mut setup.sm.decay.annihilation, "anihilacja");
     ui.checkbox(&mut setup.sm.run.adaptive, "krok adaptacyjny");

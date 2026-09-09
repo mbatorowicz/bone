@@ -253,6 +253,7 @@ impl Particles {
             ("L", format!("{:>10}", s.lepton)),
             ("rozpady", format!("{:>10}", s.decayed)),
             ("anihilacje", format!("{:>10}", s.annihilated)),
+            ("F_g/F_EM", format!("{:>10.2e}", s.gravity_over_em)),
         ];
         if let Some(gamma) = s.gamma_max {
             rows.push(("γ maks.", format!("{:>10.3}", gamma)));
@@ -801,6 +802,16 @@ mod tests {
         assert!(sm.headline().contains("krok"));
         assert!(sm.is_particles());
         assert_eq!(sm.n(), 2);
+        let gravity_row = sm
+            .rows()
+            .into_iter()
+            .find(|(name, _)| *name == "F_g/F_EM")
+            .expect("plazma ma pokazać F_g/F_EM, nie solver grawitacji");
+        let ratio: f64 = gravity_row.1.trim().parse().unwrap();
+        assert!(
+            (8.0e-37..9.0e-37).contains(&ratio),
+            "F_g/F_EM = {ratio:e}"
+        );
 
         let mut qm = Session::start_qm(small_qm(), temp_dir("qm-adv"), false).unwrap();
         qm.advance(2).unwrap();

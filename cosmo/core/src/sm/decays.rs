@@ -1,8 +1,8 @@
 //! Rozpady i anihilacja — warstwa stochastyczna nad całkowaniem.
 //!
-//! To tutaj oddziaływanie słabe robi coś obserwowalnego. Jako siła jest wygaszone
-//! na każdej odległości, którą ta symulacja rozdziela (patrz [`crate::sm::forces`]);
-//! jego skutkiem jest zmiana zapachu, czyli rozpad.
+//! To tutaj oddziaływanie słabe robi coś obserwowalnego. Nie jest potencjałem
+//! statycznym ani checkboxem w panelu — wymiana ciężkiego bozonu zmienia zapach,
+//! więc skutkiem jest rozpad, nie przekaz pędu.
 //!
 //! # Co jest liczone dokładnie
 //!

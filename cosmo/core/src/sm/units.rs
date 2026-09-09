@@ -47,9 +47,9 @@ pub const PLANCK_MASS: f64 = constants::PLANCK_MASS_MEV;
 /// Sprzężenie grawitacyjne: `V = −GRAVITY · m₁m₂ / r` (masy w MeV, `r` w fm).
 ///
 /// Wynika z `G = ħc/M_Pl²`. Rząd wielkości `10⁻⁴²` nie jest pomyłką — to jest
-/// właśnie ta liczba, przez którą grawitacja w fizyce cząstek nie występuje.
-/// Moduł [`crate::sm::forces`] liczy ją mimo to i **mierzy** jej udział, zamiast
-/// zakładać, że jest zaniedbywalna.
+/// właśnie ta liczba, przez którą grawitacja w fizyce cząstek nie występuje
+/// jako siła. Udział jest odczytem [`proton_gravity_over_em`], nie kolumną
+/// solvera.
 pub const GRAVITY: f64 = constants::GRAVITY_MEV_FM;
 
 /// Sprzężenie silne w skali ~1 GeV. Nie jest stałą — biegnie ze skalą energii —
@@ -73,11 +73,26 @@ pub const ALPHA_WEAK: f64 = ALPHA_EM / constants::SIN2_THETA_W;
 /// Zasięg oddziaływania słabego `λ_W = ħc/M_W` w fm.
 ///
 /// Liczbowo `≈ 0,0025 fm` — dwa i pół tysiąca razy mniej niż promień protonu.
-/// Dlatego oddziaływanie słabe praktycznie nie jest siłą: na każdej odległości,
-/// którą ta symulacja rozdziela, jego wkład do pędu jest wygaszony wykładniczo.
-/// Jego widocznym skutkiem są **rozpady**, i tam właśnie jest policzone —
-/// w [`crate::sm::decays`].
+/// Dlatego oddziaływanie słabe nie jest tu siłą: na każdej odległości, którą
+/// ta symulacja rozdziela, Yukawa byłaby zerem w `f64`. Widocznym skutkiem
+/// są **rozpady** w [`crate::sm::decays`].
 pub const WEAK_RANGE: f64 = HBAR_C / W_MASS;
+
+/// Iloraz `|F_g / F_EM|` dla pary o masach `m` [MeV] i ładunkach `q` [e].
+/// Niezależny od odległości — solver nie jest potrzebny.
+pub fn gravity_over_em(mass_a: f64, mass_b: f64, charge_a: f64, charge_b: f64) -> Option<f64> {
+    let electric = COULOMB * (charge_a * charge_b).abs();
+    if electric <= 0.0 || mass_a <= 0.0 || mass_b <= 0.0 {
+        return None;
+    }
+    Some(GRAVITY * mass_a * mass_b / electric)
+}
+
+/// Klasyczny odczyt plazmy: dwa protony, ≈ 8·10⁻³⁷.
+pub fn proton_gravity_over_em() -> f64 {
+    let mass = constants::PROTON_MASS_MEV;
+    gravity_over_em(mass, mass, 1.0, 1.0).expect("proton ma masę i ładunek")
+}
 
 /// Klasyczny promień elektronu `r_e = α ħc / m_e c²` w fm. Skala przekroju
 /// czynnego na anihilację `e⁺e⁻ → γγ`.
@@ -116,12 +131,16 @@ mod tests {
     /// jedyny warunek, żeby wolno je było dodać do siebie w jednej pętli sił.
     #[test]
     fn gravity_to_coulomb_ratio_for_two_protons() {
-        let proton = constants::PROTON_MASS_MEV;
-        let ratio = GRAVITY * proton * proton / COULOMB;
+        let ratio = proton_gravity_over_em();
         assert!(
             (8.0e-37..9.0e-37).contains(&ratio),
             "grawitacja/Coulomb = {ratio:e}, a ma być ~8·10⁻³⁷"
         );
+        assert_eq!(
+            gravity_over_em(constants::PROTON_MASS_MEV, constants::PROTON_MASS_MEV, 1.0, 1.0),
+            Some(ratio)
+        );
+        assert!(gravity_over_em(1.0, 1.0, 0.0, 1.0).is_none());
     }
 
     /// Napięcie struny wyrażone „po fizycznemu": prawie 1 GeV na femtometr.

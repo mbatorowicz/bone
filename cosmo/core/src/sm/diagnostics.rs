@@ -68,8 +68,10 @@ pub struct Snapshot {
     /// Odchylenie liczb całkowitych od wartości początkowych. Zero albo usterka.
     pub integer_drift: IntegerDrift,
 
-    pub energy_of: [f64; 4],
-    pub rms_of: [f64; 4],
+    pub energy_of: [f64; 2],
+    pub rms_of: [f64; 2],
+    /// `|F_g/F_EM|` dla dwóch protonów — odczyt z mas i ładunków, bez solvera.
+    pub gravity_over_em: f64,
 
     pub beta_mean: f64,
     pub beta_max: f64,
@@ -226,6 +228,7 @@ pub fn collect(
         },
         energy_of: field.energy,
         rms_of: field.rms,
+        gravity_over_em: crate::sm::units::proton_gravity_over_em(),
         beta_mean: if n > 0 { beta_sum / n as f64 } else { 0.0 },
         beta_max,
         gamma_max,
@@ -592,7 +595,6 @@ mod tests {
             ForceConfig {
                 coulomb: true,
                 strong: true,
-                gravity: true,
                 backend: BackendKind::Exact,
                 ..ForceConfig::default()
             },
@@ -600,8 +602,11 @@ mod tests {
 
         assert!(snapshot.rms_from(Interaction::Strong) > 0.0);
         assert!(snapshot.rms_from(Interaction::Electromagnetic) > 0.0);
-        assert!(snapshot.rms_from(Interaction::Gravitational) > 0.0);
-        assert_eq!(snapshot.rms_from(Interaction::Weak), 0.0);
+        assert!(
+            (8.0e-37..9.0e-37).contains(&snapshot.gravity_over_em),
+            "F_g/F_EM = {:e}",
+            snapshot.gravity_over_em
+        );
         // Silne musi tu przeważać nad elektromagnetycznym — to jest cała treść
         // słowa „silne".
         assert!(

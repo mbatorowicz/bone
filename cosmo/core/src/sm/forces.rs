@@ -1,4 +1,4 @@
-//! Cztery oddziaływania w jednej pętli — i zmierzony udział każdego z nich.
+//! Coulomb i Cornell — nie cztery siły Modelu Standardowego.
 //!
 //! # Coulomb jedzie na solverze grawitacji
 //!
@@ -20,18 +20,22 @@
 //! widzi tylko ekranowanie — to jest fizycznie poprawne i to jest powód, dla którego
 //! plazma daje się liczyć na siatce, a chmura naładowana nie.
 //!
-//! # Dwa solvery, nie jeden
+//! # Grawitacja nie jest tu siłą
 //!
-//! Gdy włączone są **i** grawitacja, **i** Coulomb, powstają dwa osobne solwery.
-//! Siatka trzyma widmo jądra w pamięci podręcznej z kluczem zawierającym `g`, więc
-//! jeden solver wołany naprzemiennie z dwiema stałymi przebudowywałby jądro
-//! dwukrotnie **w każdym kroku** — a przebudowa to dwie transformaty na podwojonej
-//! siatce, czyli najdroższa rzecz w całym kroku.
+//! Iloraz `F_g/F_EM` dla dwóch protonów wynosi `~8·10⁻³⁷` i **nie zależy od
+//! odległości** — wychodzi z mas i ładunków, bez solvera. Wkład do pędu byłby
+//! zerem w `f64` na każdej skali, którą ten gaz rozdziela. Liczba żyje w
+//! diagnostyce plazmy, nie w pętli sił.
 //!
-//! # Silne i słabe idą pętlą po parach
+//! # Silne to Cornell, nie checkbox obok Coulomba
 //!
-//! Oba są krótkozasięgowe, więc siatka nie ma czego przyspieszać, a zysk z niej
-//! byłby ujemny: oczko siatki jest większe niż zasięg tych oddziaływań.
+//! Potencjał Cornella jest krótkozasięgowy, więc siatka nie ma czego przyspieszać.
+//! Włącza go laboratorium uwięzienia, nie lista „czterech oddziaływań SM".
+//!
+//! # Słabe to rozpady, nie potencjał Yukawy
+//!
+//! Oddziaływanie słabe nie jest siłą zachowawczą. Wymiana ciężkiego bozonu zmienia
+//! zapach. Widocznym skutkiem są rozpady w [`crate::sm::decays`].
 
 use crate::sm::config::ForceConfig;
 use crate::sm::particles::Particle;
@@ -43,29 +47,22 @@ use crate::sr::state::Field;
 use crate::mesh::Mesh;
 use crate::vec3::{Vec3, ZERO};
 
-/// Które oddziaływanie. Kolejność jest kolejnością kolumn w diagnostyce.
+/// Które oddziaływanie jest w pętli sił. Kolejność jest kolejnością kolumn
+/// w diagnostyce. Słabe i grawitacja tu nie wchodzą: słabe to rozpady,
+/// grawitacja to odczyt `F_g/F_EM`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Interaction {
     Electromagnetic,
     Strong,
-    Weak,
-    Gravitational,
 }
 
 impl Interaction {
-    pub const ALL: [Interaction; 4] = [
-        Self::Electromagnetic,
-        Self::Strong,
-        Self::Weak,
-        Self::Gravitational,
-    ];
+    pub const ALL: [Interaction; 2] = [Self::Electromagnetic, Self::Strong];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Electromagnetic => "elektromagnetyczne",
             Self::Strong => "silne",
-            Self::Weak => "słabe",
-            Self::Gravitational => "grawitacja",
         }
     }
 
@@ -73,8 +70,6 @@ impl Interaction {
         match self {
             Self::Electromagnetic => "EM",
             Self::Strong => "silne",
-            Self::Weak => "słabe",
-            Self::Gravitational => "graw.",
         }
     }
 
@@ -87,16 +82,12 @@ impl Interaction {
 /// Wynik jednego policzenia sił.
 #[derive(Clone, Debug)]
 pub struct FieldSet {
-    /// Suma sił wszystkich włączonych oddziaływań, MeV/fm.
+    /// Suma sił włączonych oddziaływań, MeV/fm.
     pub force: Vec<Vec3>,
     /// Energia potencjalna każdego oddziaływania z osobna, MeV.
-    pub energy: [f64; 4],
+    pub energy: [f64; 2],
     /// Średnia kwadratowa siły każdego oddziaływania, MeV/fm.
-    ///
-    /// Ta tablica jest powodem, dla którego wyłączone oddziaływanie nadal ma tu
-    /// swoją kolumnę: dopiero porównanie liczb pozwala **pokazać**, że grawitacja
-    /// jest 36 rzędów wielkości słabsza od Coulomba, zamiast to oświadczyć.
-    pub rms: [f64; 4],
+    pub rms: [f64; 2],
     /// Zmiękczenie, którym solver naprawdę liczył (siatka nie zejdzie poniżej oczka).
     pub effective_softening: f64,
 }
@@ -105,8 +96,8 @@ impl FieldSet {
     fn zeros(n: usize, softening: f64) -> Self {
         Self {
             force: vec![ZERO; n],
-            energy: [0.0; 4],
-            rms: [0.0; 4],
+            energy: [0.0; 2],
+            rms: [0.0; 2],
             effective_softening: softening,
         }
     }
@@ -133,14 +124,12 @@ impl FieldSet {
 pub struct Forces {
     cfg: ForceConfig,
     electromagnetic: Option<Box<dyn Backend>>,
-    gravitational: Option<Box<dyn Backend>>,
 }
 
 impl Forces {
     pub fn new(cfg: ForceConfig, n_particles: usize) -> Self {
         Self {
             electromagnetic: cfg.coulomb.then(|| make_backend(&cfg, n_particles)),
-            gravitational: cfg.gravity.then(|| make_backend(&cfg, n_particles)),
             cfg,
         }
     }
@@ -151,23 +140,17 @@ impl Forces {
 
     /// Podmień nastawy, które wolno zmieniać w trakcie biegu.
     ///
-    /// Włączenie oddziaływania w trakcie wymaga zbudowania solvera, więc dzieje się
+    /// Włączenie Coulomba w trakcie wymaga zbudowania solvera, więc dzieje się
     /// tu, a nie w silniku. Zmiana `grid` czy `backend` w locie jest świadomie
     /// nieobsługiwana: solver siatkowy trzyma stan (pudło, widmo jądra), a podmiana
     /// go w połowie biegu dałaby skok siły nie do odróżnienia od fizyki.
     pub fn apply_runtime(&mut self, live: &ForceConfig, n_particles: usize) {
         self.cfg.coulomb = live.coulomb;
-        self.cfg.gravity = live.gravity;
         self.cfg.strong = live.strong;
-        self.cfg.weak = live.weak;
         self.cfg.softening = live.softening;
-        self.cfg.short_range_cutoff = live.short_range_cutoff;
 
         if self.cfg.coulomb && self.electromagnetic.is_none() {
             self.electromagnetic = Some(make_backend(&self.cfg, n_particles));
-        }
-        if self.cfg.gravity && self.gravitational.is_none() {
-            self.gravitational = Some(make_backend(&self.cfg, n_particles));
         }
     }
 
@@ -179,13 +162,7 @@ impl Forces {
         if self.cfg.strong {
             on.push(Interaction::Strong.short());
         }
-        if self.cfg.weak {
-            on.push(Interaction::Weak.short());
-        }
-        if self.cfg.gravity {
-            on.push(Interaction::Gravitational.short());
-        }
-        let solver = match self.electromagnetic.as_ref().or(self.gravitational.as_ref()) {
+        let solver = match self.electromagnetic.as_ref() {
             Some(backend) => backend.describe(),
             None => "bez solvera".to_string(),
         };
@@ -195,12 +172,11 @@ impl Forces {
         format!("{} ({solver})", on.join(" + "))
     }
 
-    /// Czy którykolwiek włączony solver liczy w przybliżeniu.
+    /// Czy włączony solver Coulomba liczy w przybliżeniu.
     pub fn approximate(&self) -> bool {
-        [&self.electromagnetic, &self.gravitational]
-            .into_iter()
-            .flatten()
-            .any(|b| b.approximate())
+        self.electromagnetic
+            .as_ref()
+            .is_some_and(|b| b.approximate())
     }
 
     /// Policz siły i energie potencjalne dla podanego stanu.
@@ -230,31 +206,12 @@ impl Forces {
             accumulate(&mut out, Interaction::Electromagnetic, &field, state.charges());
         }
 
-        if let Some(backend) = self.gravitational.as_mut() {
-            let field = backend.compute(&state.positions, state.masses(), units::GRAVITY, eps);
-            out.effective_softening = out.effective_softening.max(backend.effective_softening(eps));
-            accumulate(&mut out, Interaction::Gravitational, &field, state.masses());
-        }
-
         if self.cfg.strong {
             let field = strong_field(state, eps);
             accumulate_pairs(&mut out, Interaction::Strong, &field);
         }
 
-        if self.cfg.weak {
-            let field = weak_field(state, self.weak_cutoff());
-            accumulate_pairs(&mut out, Interaction::Weak, &field);
-        }
-
         out
-    }
-
-    /// Zasięg, poza którym oddziaływanie słabe jest ścinane do zera.
-    ///
-    /// `40λ_W` to `e⁻⁴⁰ ≈ 4·10⁻¹⁸` reszty — poniżej precyzji `f64` względem członu
-    /// wiodącego, więc obcięcie nie jest przybliżeniem, tylko pominięciem zera.
-    fn weak_cutoff(&self) -> f64 {
-        (40.0 * units::WEAK_RANGE).min(self.cfg.short_range_cutoff)
     }
 }
 
@@ -361,53 +318,6 @@ fn strong_field(state: &State, softening: f64) -> PairField {
     PairField { force, energy }
 }
 
-/// Oddziaływanie słabe jako potencjał Yukawy o zasięgu `ħc/M_W`.
-///
-/// ```text
-/// V(r) = −α_w·ħc·e^(−r/λ)/r,    λ = ħc/M_W ≈ 0,0025 fm
-/// ```
-///
-/// Dwa zastrzeżenia, oba istotne:
-///
-/// 1. **Oddziaływanie słabe nie jest potencjałem statycznym.** Wymiana ciężkiego
-///    bozonu między fermionami zmienia zapach i nie sprowadza się do siły
-///    zachowawczej. Ta postać jest oszacowaniem co do rzędu wielkości, a nie
-///    obliczeniem — i jest tu po to, żeby ten rząd wielkości **pokazać**.
-/// 2. **Widocznym skutkiem oddziaływania słabego są rozpady**, nie przekaz pędu.
-///    Rozpady liczy [`crate::sm::decays`], i to tam ten mechanizm robi cokolwiek
-///    obserwowalnego.
-fn weak_field(state: &State, cutoff: f64) -> PairField {
-    let n = state.n();
-    let mut force = vec![ZERO; n];
-    let mut energy = 0.0;
-    let coupling = units::ALPHA_WEAK * units::HBAR_C;
-    let lambda = units::WEAK_RANGE;
-    let cutoff2 = cutoff * cutoff;
-
-    // Oddziaływaniu słabemu podlegają wszystkie fermiony; bozony pomijamy.
-    let fermions: Vec<usize> = (0..n)
-        .filter(|i| state.kinds[*i].data().spin_doubled % 2 == 1)
-        .collect();
-    for (position, &i) in fermions.iter().enumerate() {
-        for &j in &fermions[position + 1..] {
-            let d = state.positions[i] - state.positions[j];
-            let r2 = d.norm_squared();
-            if r2 > cutoff2 || r2 == 0.0 {
-                continue;
-            }
-            let r = r2.sqrt();
-            let decay = (-r / lambda).exp();
-            energy += -coupling * decay / r;
-            // −dV/dr = −α_w ħc e^(−r/λ)(1/r² + 1/(λr)) — przyciąganie.
-            let magnitude = coupling * decay * (1.0 / (r * r) + 1.0 / (lambda * r));
-            let pull = d * (-magnitude / r);
-            force[i] += pull;
-            force[j] -= pull;
-        }
-    }
-    PairField { force, energy }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,9 +336,7 @@ mod tests {
     fn only(interaction: Interaction) -> ForceConfig {
         ForceConfig {
             coulomb: interaction == Interaction::Electromagnetic,
-            gravity: interaction == Interaction::Gravitational,
             strong: interaction == Interaction::Strong,
-            weak: interaction == Interaction::Weak,
             softening: 0.0,
             backend: BackendKind::Exact,
             ..ForceConfig::default()
@@ -485,36 +393,19 @@ mod tests {
         assert!((opposite.energy_of(Interaction::Electromagnetic) + expected).abs() < 1e-12);
     }
 
-    /// Sedno tego, po co grawitacja jest w tym modelu włączalna: żeby dało się
-    /// ZOBACZYĆ, jak bardzo jest nieistotna. Iloraz `~10⁻³⁶` jest tu wynikiem
-    /// pomiaru na dwóch protonach, a nie liczbą przepisaną z podręcznika.
+    /// Grawitacja nie jest w pętli sił. Iloraz wychodzi z mas i ładunków, bez
+    /// solvera, i jest tą samą liczbą co w podręczniku: `~8·10⁻³⁷` dla dwóch protonów.
     #[test]
-    fn gravity_is_thirty_six_orders_below_the_electric_force() {
-        let p = Particle::of(Species::Proton);
-        let state = pair(p, p, 1.0);
-        let electric = Forces::new(only(Interaction::Electromagnetic), 2)
-            .compute(&state)
-            .force[1]
-            .norm();
-        let gravity = Forces::new(only(Interaction::Gravitational), 2)
-            .compute(&state)
-            .force[1]
-            .norm();
-        let ratio = gravity / electric;
+    fn gravity_over_em_is_a_coupling_ratio_not_a_solver() {
+        let ratio = units::proton_gravity_over_em();
         assert!(
-            (1e-37..1e-35).contains(&ratio),
-            "grawitacja/elektryczność = {ratio:e}"
+            (8.0e-37..9.0e-37).contains(&ratio),
+            "F_g/F_EM = {ratio:e}"
         );
-    }
-
-    /// Grawitacja przyciąga zawsze — także cząstki o jednakowym ładunku, dla których
-    /// siła elektryczna odpycha. To rozróżnia dwa wywołania tego samego solvera.
-    #[test]
-    fn gravity_always_attracts() {
         let p = Particle::of(Species::Proton);
-        let field = Forces::new(only(Interaction::Gravitational), 2).compute(&pair(p, p, 1.0));
-        assert!(field.force[0].x > 0.0, "grawitacja odepchnęła protony");
-        assert!(field.energy_of(Interaction::Gravitational) < 0.0, "dodatnia energia wiązania");
+        let field = Forces::new(only(Interaction::Electromagnetic), 2).compute(&pair(p, p, 1.0));
+        assert_eq!(field.rms_of(Interaction::Strong), 0.0);
+        assert_eq!(Interaction::ALL.len(), 2);
     }
 
     /// Uwięzienie: siła między kwarkiem a antykwarkiem NIE maleje do zera
@@ -579,34 +470,22 @@ mod tests {
         assert_eq!(field.energy_of(Interaction::Strong), 0.0);
     }
 
-    /// Sedno oddziaływania słabego: na odległości, którą ta symulacja rozdziela,
-    /// jego udział jako siły jest znikomy. Test mierzy to na parze elektronów
-    /// oddalonych o promień protonu.
+    /// Słabe nie jest siłą: nawet w zasięgu `λ_W` pętla sił nie dokłada Yukawy.
+    /// Skutkiem oddziaływania słabego są rozpady, nie przekaz pędu.
     #[test]
-    fn the_weak_force_is_negligible_at_any_resolvable_distance() {
-        let e = Particle::of(Species::Electron);
-        let state = pair(e, e, 0.8);
-        let weak = Forces::new(only(Interaction::Weak), 2).compute(&state).force[0].norm();
-        let electric = Forces::new(only(Interaction::Electromagnetic), 2)
-            .compute(&state)
-            .force[0]
-            .norm();
-        assert!(
-            weak / electric < 1e-100,
-            "słabe/elektryczne = {:e} — za dużo jak na zasięg 0,0025 fm",
-            weak / electric
-        );
-    }
-
-    /// Poniżej zasięgu oddziaływanie słabe jednak istnieje — inaczej test wyżej
-    /// przechodziłby także dla implementacji zwracającej stałe zero.
-    #[test]
-    fn the_weak_force_exists_below_its_range() {
+    fn the_weak_interaction_is_decays_not_a_force() {
         let e = Particle::of(Species::Electron);
         let close = units::WEAK_RANGE / 2.0;
-        let field = Forces::new(only(Interaction::Weak), 2).compute(&pair(e, e, close));
-        assert!(field.force[0].norm() > 0.0, "słabe zniknęło w swoim zasięgu");
-        assert!(field.energy_of(Interaction::Weak) < 0.0, "przyciąganie ma ujemną energię");
+        let mut forces = Forces::new(only(Interaction::Electromagnetic), 2);
+        let field = forces.compute(&pair(e, e, close));
+        let expected = units::COULOMB / (close * close);
+        assert!(
+            (field.force[1].x.abs() - expected).abs() / expected < 1e-9,
+            "przy λ_W/2 siła ma być samym Coulombem, jest {}",
+            field.force[1].x
+        );
+        assert_eq!(field.energy_of(Interaction::Strong), 0.0);
+        assert_eq!(Interaction::ALL.len(), 2);
     }
 
     /// Trzecie prawo Newtona dla każdego oddziaływania z osobna. Najczulszy test na
@@ -646,12 +525,13 @@ mod tests {
     /// Włączenie dwóch oddziaływań ma dawać sumę, a nie jedno z nich.
     #[test]
     fn enabled_interactions_add_up() {
-        let p = Particle::of(Species::Proton);
-        let state = pair(p, p, 1.0);
+        let q = Particle::of(Species::Up);
+        let anti = Particle::anti_of(Species::Up);
+        let state = pair(q, anti, 1.0);
         let mut both = Forces::new(
             ForceConfig {
                 coulomb: true,
-                gravity: true,
+                strong: true,
                 softening: 0.0,
                 backend: BackendKind::Exact,
                 ..ForceConfig::default()
@@ -662,13 +542,12 @@ mod tests {
         let electric = Forces::new(only(Interaction::Electromagnetic), 2)
             .compute(&state)
             .force[1];
-        let gravity = Forces::new(only(Interaction::Gravitational), 2)
+        let strong = Forces::new(only(Interaction::Strong), 2)
             .compute(&state)
             .force[1];
-        assert!((field.force[1] - (electric + gravity)).norm() < 1e-30);
+        assert!((field.force[1] - (electric + strong)).norm() < 1e-30);
         assert!(field.rms_of(Interaction::Electromagnetic) > 0.0);
-        assert!(field.rms_of(Interaction::Gravitational) > 0.0);
-        assert_eq!(field.rms_of(Interaction::Strong), 0.0);
+        assert!(field.rms_of(Interaction::Strong) > 0.0);
     }
 
     #[test]
@@ -705,7 +584,6 @@ mod tests {
 
         let base = ForceConfig {
             coulomb: true,
-            gravity: false,
             softening: 1.0,
             grid: 32,
             ..ForceConfig::default()
@@ -757,7 +635,6 @@ mod tests {
         )
         .describe();
         assert!(text.contains("EM") && text.contains("silne"), "{text}");
-        assert!(!text.contains("graw."), "{text}");
 
         let none = Forces::new(
             ForceConfig {
@@ -770,20 +647,20 @@ mod tests {
         assert!(none.contains("brak oddziaływań"), "{none}");
     }
 
-    /// Włączenie oddziaływania w trakcie biegu musi zbudować solver, a nie
+    /// Włączenie Coulomba w trakcie biegu musi zbudować solver, a nie
     /// przemilczeć prośbę.
     #[test]
     fn runtime_switch_builds_the_missing_solver() {
-        let mut forces = Forces::new(only(Interaction::Electromagnetic), 2);
+        let mut forces = Forces::new(only(Interaction::Strong), 2);
         let p = Particle::of(Species::Proton);
         let state = pair(p, p, 1.0);
-        assert_eq!(forces.compute(&state).rms_of(Interaction::Gravitational), 0.0);
+        assert_eq!(forces.compute(&state).rms_of(Interaction::Electromagnetic), 0.0);
 
         let live = ForceConfig {
-            gravity: true,
+            coulomb: true,
             ..*forces.config()
         };
         forces.apply_runtime(&live, 2);
-        assert!(forces.compute(&state).rms_of(Interaction::Gravitational) > 0.0);
+        assert!(forces.compute(&state).rms_of(Interaction::Electromagnetic) > 0.0);
     }
 }

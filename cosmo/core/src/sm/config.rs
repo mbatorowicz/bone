@@ -114,13 +114,15 @@ impl SpawnConfig {
 }
 
 /// Które oddziaływania są włączone i jak liczone.
+///
+/// Coulomb i Cornell zostają w kodzie, bo laboratoria ich potrzebują.
+/// Grawitacja nie jest tu flagą: jej udział to odczyt `F_g/F_EM` z mas i
+/// ładunków. Słabe nie jest tu flagą: to rozpady, nie potencjał.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ForceConfig {
     pub coulomb: bool,
-    pub gravity: bool,
     pub strong: bool,
-    pub weak: bool,
     /// Zmiękczenie Plummera `ε` w fm — wspólne dla oddziaływań dalekozasięgowych.
     ///
     /// **To jest proteza za mechanikę kwantową, nie parametr fizyczny.** Dwa
@@ -129,8 +131,6 @@ pub struct ForceConfig {
     /// przestajemy udawać, że opis klasyczny obowiązuje. Diagnostyka podaje, jaka
     /// energia z tego wynika, żeby dało się ocenić, czy wynik od niej zależy.
     pub softening: f64,
-    /// Zasięg pętli po parach dla oddziaływań krótkozasięgowych (fm).
-    pub short_range_cutoff: f64,
     pub backend: BackendKind,
     pub grid: usize,
     pub box_margin: f64,
@@ -140,14 +140,8 @@ impl Default for ForceConfig {
     fn default() -> Self {
         Self {
             coulomb: true,
-            // Grawitacja jest o 36 rzędów wielkości słabsza od Coulomba, więc
-            // domyślnie jest wyłączona — ale da się ją włączyć i ZMIERZYĆ jej udział
-            // zamiast przyjąć na wiarę, że jest zaniedbywalna.
-            gravity: false,
             strong: false,
-            weak: false,
             softening: 1.0e-2,
-            short_range_cutoff: 5.0,
             backend: BackendKind::Auto,
             grid: 48,
             box_margin: 0.15,
@@ -157,11 +151,11 @@ impl Default for ForceConfig {
 
 impl ForceConfig {
     pub fn any_long_range(&self) -> bool {
-        self.coulomb || self.gravity
+        self.coulomb
     }
 
     pub fn any_short_range(&self) -> bool {
-        self.strong || self.weak
+        self.strong
     }
 
     pub fn none_enabled(&self) -> bool {
@@ -473,9 +467,7 @@ mod tests {
         let mut cfg = Config::default();
         cfg.forces = ForceConfig {
             coulomb: false,
-            gravity: false,
             strong: false,
-            weak: false,
             ..cfg.forces
         };
         assert!(cfg.forces.none_enabled());

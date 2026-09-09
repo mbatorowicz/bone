@@ -107,7 +107,7 @@ impl State {
         self.kinds.is_empty()
     }
 
-    /// Masy spoczynkowe w MeV — gotowa tablica dla solvera grawitacji.
+    /// Masy spoczynkowe w MeV — gotowa tablica dla kinematyki.
     pub fn masses(&self) -> &[f64] {
         &self.masses
     }
