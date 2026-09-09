@@ -15,10 +15,10 @@ use bone_core::qm::hydrogen::{orbital_label, spectroscopic};
 use bone_core::sm;
 use bone_core::sm::config::Shape;
 use bone_core::sr;
-use bone_core::sr::config::{BackendKind, Geometry};
+use bone_core::sr::config::{BackendKind, Geometry, Kinematics};
 use bone_core::io::checkpoint;
 use crate::charts;
-use crate::simulation::{Mode, ModelCard, View};
+use crate::simulation::{nbody_card, Mode, ModelCard, View};
 
 /// Nastawy formularza — to, co widzi użytkownik, zanim wciśnie „Uruchom".
 pub struct Setup {
@@ -173,6 +173,7 @@ fn model_card(ui: &mut Ui, setup: &Setup) {
                 not_this: lab.not_this,
             }
         }
+        Mode::Relativistic => nbody_card(setup.sr.physics.kinematics),
         mode => mode.card(),
     };
     ui.group(|ui| {
@@ -249,6 +250,13 @@ fn relativistic_form(ui: &mut Ui, setup: &mut Setup) {
     });
     ui.add_space(6.0);
 
+    ui.horizontal(|ui| {
+        ui.label("kinematyka");
+        for kin in Kinematics::ALL {
+            ui.selectable_value(&mut setup.sr.physics.kinematics, kin, kin.label());
+        }
+    });
+
     egui::ComboBox::from_label("kształt")
         .selected_text(setup.sr.spawn.geometry.label())
         .show_ui(ui, |ui| {
@@ -281,7 +289,7 @@ fn relativistic_form(ui: &mut Ui, setup: &mut Setup) {
     }
     ui.add(
         egui::Slider::new(&mut setup.sr.physics.cooling_rate, 0.0..=10.0)
-            .text("chłodzenie 1/t"),
+            .text("tłumienie dyspersji (fenomenologia)"),
     );
 }
 
@@ -534,8 +542,9 @@ fn mixture_text(cfg: &sm::Config) -> String {
 fn setup_summary(setup: &Setup) -> String {
     match setup.mode {
         Mode::Relativistic => format!(
-            "{} · N={} · R={:.1} · M={:.3e} · G={:.4} · c={:.1}",
+            "{} · {} · N={} · R={:.1} · M={:.3e} · G={:.4} · c={:.1}",
             setup.sr.spawn.geometry.label(),
+            setup.sr.physics.kinematics.label(),
             setup.sr.spawn.n_particles,
             setup.sr.spawn.radius,
             setup.sr.spawn.total_mass,

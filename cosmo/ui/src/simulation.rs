@@ -1,13 +1,14 @@
 //! Cztery modele i odtwarzanie pod jednym interfejsem panelu i renderera.
 
 use bone_core::session::Session;
+use bone_core::sr::relativity::Kinematics;
+use bone_core::vec3::Vec3;
 use crate::render::PointCloud;
 use crate::replay::Replay;
-use bone_core::vec3::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// Odosobniona chmura, kinematyka szczególnej teorii względności.
+    /// Odosobniona chmura; kinematyka Newton albo SR (przełącznik).
     Relativistic,
     /// Próbka wszechświata ΛCDM z parametrami Plancka 2018.
     Cosmological,
@@ -36,7 +37,7 @@ impl Mode {
 
     pub fn subtitle(self) -> &'static str {
         match self {
-            Self::Relativistic => "Newton + kinematyka SR",
+            Self::Relativistic => "Newton albo kinematyka SR",
             Self::Cosmological => "ΛCDM · PM periodyczny",
             Self::Particles => "kinematyka i rozpady PDG",
             Self::Atoms => "Schrödinger · |ψ|²",
@@ -48,9 +49,9 @@ impl Mode {
         match self {
             Self::Relativistic => ModelCard {
                 equation: "F = −G m m r / r³ (Plummer)",
-                scope: "izolowana chmura, nie OTW",
-                comparison: "wiriał, dryf E, błąd siły",
-                not_this: "nie metryka, nie fale grawitacyjne",
+                scope: "izolowana chmura · kinematyka Newton albo SR",
+                comparison: "wiriał, dryf E · przy małym β energie zgodne",
+                not_this: "nie metryka, nie 1PN, nie fale grawitacyjne",
             },
             Self::Cosmological => ModelCard {
                 equation: "p = a² ẋ, tło Planck 2018",
@@ -71,6 +72,24 @@ impl Mode {
                 not_this: "nie HF, nie cząsteczki",
             },
         }
+    }
+}
+
+/// Karta N-ciał zależy od przełącznika kinematyki — względność to nie kolor.
+pub fn nbody_card(kinematics: Kinematics) -> ModelCard {
+    match kinematics {
+        Kinematics::Newton => ModelCard {
+            equation: "v = p/m, E = p²/2m",
+            scope: "izolowana chmura · siła Newtona (Plummer)",
+            comparison: "wiriał, dryf E · |v| może przekroczyć c",
+            not_this: "nie OTW, nie 1PN, nie fale grawitacyjne",
+        },
+        Kinematics::Sr => ModelCard {
+            equation: "p = γmv, v = pc²/E",
+            scope: "izolowana chmura · siła Newtona (Plummer)",
+            comparison: "wiriał, dryf E · |v| < c z definicji",
+            not_this: "nie OTW, nie 1PN, nie fale grawitacyjne",
+        },
     }
 }
 
@@ -237,7 +256,7 @@ mod tests {
         assert_eq!(Mode::Cosmological.label(), "Kosmologia");
         assert_eq!(Mode::Particles.label(), "Cząstki");
         assert_eq!(Mode::Atoms.label(), "Atomy");
-        assert_eq!(Mode::Relativistic.subtitle(), "Newton + kinematyka SR");
+        assert_eq!(Mode::Relativistic.subtitle(), "Newton albo kinematyka SR");
         assert_eq!(Mode::Cosmological.subtitle(), "ΛCDM · PM periodyczny");
         assert_eq!(Mode::Particles.subtitle(), "kinematyka i rozpady PDG");
         assert_eq!(Mode::Atoms.subtitle(), "Schrödinger · |ψ|²");
@@ -247,7 +266,15 @@ mod tests {
     fn model_cards_name_the_equation_and_the_lie() {
         let nbody = Mode::Relativistic.card();
         assert!(nbody.equation.contains("Plummer"));
-        assert!(nbody.not_this.contains("fale grawitacyjne"));
+        assert!(nbody.scope.contains("Newton"));
+        assert!(nbody.scope.contains("SR"));
+        assert!(nbody.not_this.contains("1PN"));
+        let newton = nbody_card(Kinematics::Newton);
+        assert!(newton.equation.contains("p/m"));
+        assert!(newton.comparison.contains("przekroczyć c"));
+        let rel = nbody_card(Kinematics::Sr);
+        assert!(rel.equation.contains("γmv"));
+        assert!(rel.comparison.contains("|v| < c"));
         let cosmo = Mode::Cosmological.card();
         assert!(cosmo.equation.contains("Planck 2018"));
         assert!(cosmo.scope.contains("periodyczne"));

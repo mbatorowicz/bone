@@ -1,9 +1,9 @@
-//! Laboratorium N-ciał: grawitacja Newtona, kinematyka szczególnej teorii względności.
+//! Laboratorium N-ciał: grawitacja Newtona, kinematyka do wyboru (Newton albo SR).
 //!
-//! Nazwa zakładki to N-ciała, nie „SR". Grawitacja jest newtonowska (chwilowa, `1/r²`),
-//! a względność siedzi wyłącznie w kinematyce — pęd `p = γmv` jest zmienną stanu, a prędkość wynika z
-//! pędu, więc żadna cząstka nie przekroczy `c`. To NIE jest ogólna teoria
-//! względności: nie ma metryki, nie ma opóźnienia oddziaływania.
+//! Nazwa zakładki to N-ciała, nie „SR". Grawitacja jest newtonowska (chwilowa, `1/r²`).
+//! Leapfrog działa na pędzie; przełącznik kinematyki decyduje, czy `v = p/m`, czy
+//! `p = γmv`. W SR żadna cząstka nie przekroczy `c`. To NIE jest ogólna teoria
+//! względności: nie ma metryki, nie ma 1PN, nie ma opóźnienia oddziaływania.
 //!
 //! Podział na moduły idzie po odpowiedzialnościach, nie po rozmiarach plików:
 //!

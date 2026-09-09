@@ -133,7 +133,7 @@ impl Cooling {
             } else {
                 format!("{}³", self.requested_grid)
             };
-            return format!("chłodzenie {how} (jeszcze nie użyte)");
+            return format!("tłumienie {how} (jeszcze nie użyte)");
         };
         let auto = if self.requested_grid == 0 {
             " (automat)"
@@ -147,7 +147,7 @@ impl Cooling {
             "  ⚠ za mało cząstek na komórkę"
         };
         format!(
-            "chłodzenie {}³{auto}, oczko {cell:.3}, {ppc:.1} cząstek/komórkę{note}",
+            "tłumienie {}³{auto}, oczko {cell:.3}, {ppc:.1} cząstek/komórkę{note}",
             self.grid()
         )
     }
@@ -163,10 +163,11 @@ impl Cooling {
             return 0.0;
         }
         let c = phys.c;
+        let kin = phys.kinematics;
         let n = state.n();
-        let before = self.kinetic(state, c);
+        let before = self.kinetic(state, kin, c);
 
-        let velocities = state.velocities(c);
+        let velocities = state.velocities(kin, c);
         let local = self.local_fields(&state.positions, &state.masses, &velocities);
 
         let total_mass: f64 = state.masses.iter().sum();
@@ -200,20 +201,20 @@ impl Cooling {
             .zip(&state.masses)
             .zip(&cooled)
         {
-            *p = sr::momentum(*mass, *target, c).unwrap_or(*p);
+            *p = kin.momentum(*mass, *target, c).unwrap_or(*p);
         }
         restore_total_momentum(&mut state.momenta, reference_momentum, &state.masses);
 
-        let after = self.kinetic(state, c);
+        let after = self.kinetic(state, kin, c);
         // Nie zwracamy wartości ujemnej: poprawka pędu może w skrajnym przypadku dodać
         // znikomą ilość energii, a ujemne „wypromieniowanie" zepsułoby bilans, którym
         // mierzymy jakość całkowania.
         (before - after).max(0.0)
     }
 
-    fn kinetic(&self, state: &State, c: f64) -> f64 {
+    fn kinetic(&self, state: &State, kin: sr::Kinematics, c: f64) -> f64 {
         (0..state.n())
-            .map(|i| sr::kinetic_energy(state.masses[i], state.momenta[i], c))
+            .map(|i| kin.kinetic_energy(state.masses[i], state.momenta[i], c))
             .sum()
     }
 
@@ -319,9 +320,9 @@ impl Cooling {
         }
         self.warned = true;
         self.pending_warning = Some(format!(
-            "siatka chłodzenia {}³ daje tylko {:.1} cząstek na zajętą komórkę — lokalna \
-             dyspersja jest wtedy szumem próbkowania, a chłodzenie prawie nie działa. \
-             Ustaw siatkę chłodzenia na 0 (automat wybrałby {}) albo zwiększ liczbę cząstek.",
+            "siatka tłumienia {}³ daje tylko {:.1} cząstek na zajętą komórkę — lokalna \
+             dyspersja jest wtedy szumem próbkowania, a tłumienie prawie nie działa. \
+             Ustaw siatkę tłumienia na 0 (automat wybrałby {}) albo zwiększ liczbę cząstek.",
             self.grid(),
             self.particles_per_cell(),
             auto_grid(self.particles)
@@ -486,7 +487,7 @@ mod tests {
         let mut state = hot_cloud(2_000, 2.0, ZERO, ph.c);
         let kinetic = |s: &State| -> f64 {
             (0..s.n())
-                .map(|i| sr::kinetic_energy(s.masses[i], s.momenta[i], ph.c))
+                .map(|i| ph.kinematics.kinetic_energy(s.masses[i], s.momenta[i], ph.c))
                 .sum::<f64>()
         };
         let before = kinetic(&state);
@@ -508,7 +509,7 @@ mod tests {
         let bulk = vec3(3.0, 0.0, 0.0);
         let mut state = hot_cloud(4_000, 1.5, bulk, ph.c);
         let mean_velocity = |s: &State| -> Vec3 {
-            (0..s.n()).map(|i| s.velocity(i, ph.c)).sum::<Vec3>() / s.n() as f64
+            (0..s.n()).map(|i| s.velocity(i, ph.kinematics, ph.c)).sum::<Vec3>() / s.n() as f64
         };
         let before = mean_velocity(&state);
         Cooling::new(0, 0.15).unwrap().apply(&mut state, &ph, 0.5);
@@ -527,9 +528,9 @@ mod tests {
         let ph = phys(5.0);
         let mut state = hot_cloud(4_000, 2.0, vec3(2.0, 0.0, 0.0), ph.c);
         let dispersion = |s: &State| -> f64 {
-            let mean = (0..s.n()).map(|i| s.velocity(i, ph.c)).sum::<Vec3>() / s.n() as f64;
+            let mean = (0..s.n()).map(|i| s.velocity(i, ph.kinematics, ph.c)).sum::<Vec3>() / s.n() as f64;
             ((0..s.n())
-                .map(|i| (s.velocity(i, ph.c) - mean).norm_squared())
+                .map(|i| (s.velocity(i, ph.kinematics, ph.c) - mean).norm_squared())
                 .sum::<f64>()
                 / s.n() as f64)
                 .sqrt()
@@ -560,7 +561,7 @@ mod tests {
         for _ in 0..50 {
             cooling.apply(&mut state, &ph, 0.2);
             for i in 0..state.n() {
-                assert!(state.speed_over_c(i, ph.c) < 1.0);
+                assert!(state.speed_over_c(i, ph.kinematics, ph.c) < 1.0);
             }
         }
     }
@@ -573,9 +574,9 @@ mod tests {
         ph.cooling_floor = 0.1; // 0,1·c = 3
         let mut state = hot_cloud(3_000, 3.0, ZERO, ph.c);
         let dispersion = |s: &State| -> f64 {
-            let mean = (0..s.n()).map(|i| s.velocity(i, ph.c)).sum::<Vec3>() / s.n() as f64;
+            let mean = (0..s.n()).map(|i| s.velocity(i, ph.kinematics, ph.c)).sum::<Vec3>() / s.n() as f64;
             ((0..s.n())
-                .map(|i| (s.velocity(i, ph.c) - mean).norm_squared())
+                .map(|i| (s.velocity(i, ph.kinematics, ph.c) - mean).norm_squared())
                 .sum::<f64>()
                 / s.n() as f64)
                 .sqrt()
@@ -617,10 +618,10 @@ mod tests {
         ph.cooling_floor = 0.1;
         let mut state = hot_cloud(3_000, 3.0, ZERO, ph.c);
         Cooling::new(0, 0.15).unwrap().apply(&mut state, &ph, 10.0);
-        let mean = (0..state.n()).map(|i| state.velocity(i, ph.c)).sum::<Vec3>()
+        let mean = (0..state.n()).map(|i| state.velocity(i, ph.kinematics, ph.c)).sum::<Vec3>()
             / state.n() as f64;
         let sigma = ((0..state.n())
-            .map(|i| (state.velocity(i, ph.c) - mean).norm_squared())
+            .map(|i| (state.velocity(i, ph.kinematics, ph.c) - mean).norm_squared())
             .sum::<f64>()
             / state.n() as f64)
             .sqrt();

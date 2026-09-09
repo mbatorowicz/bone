@@ -5,7 +5,7 @@
 //! `v` musiałby przy każdym półkroku robić przejście v→p→v, co kosztuje dwa
 //! pierwiastki i traci cyfry znaczące bez żadnego zysku.
 
-use crate::sr::relativity as sr;
+use crate::sr::relativity::Kinematics;
 use crate::vec3::{Vec3, ZERO};
 
 /// Pole sił i potencjał z jednego wywołania solvera.
@@ -108,20 +108,20 @@ impl State {
         self.masses.iter().sum()
     }
 
-    pub fn velocity(&self, i: usize, c: f64) -> Vec3 {
-        sr::velocity(self.masses[i], self.momenta[i], c)
+    pub fn velocity(&self, i: usize, kin: Kinematics, c: f64) -> Vec3 {
+        kin.velocity(self.masses[i], self.momenta[i], c)
     }
 
-    pub fn gamma(&self, i: usize, c: f64) -> f64 {
-        sr::gamma(self.masses[i], self.momenta[i], c)
+    pub fn gamma(&self, i: usize, kin: Kinematics, c: f64) -> f64 {
+        kin.gamma(self.masses[i], self.momenta[i], c)
     }
 
-    pub fn speed_over_c(&self, i: usize, c: f64) -> f64 {
-        sr::speed_over_c(self.masses[i], self.momenta[i], c)
+    pub fn speed_over_c(&self, i: usize, kin: Kinematics, c: f64) -> f64 {
+        kin.speed_over_c(self.masses[i], self.momenta[i], c)
     }
 
-    pub fn velocities(&self, c: f64) -> Vec<Vec3> {
-        (0..self.n()).map(|i| self.velocity(i, c)).collect()
+    pub fn velocities(&self, kin: Kinematics, c: f64) -> Vec<Vec3> {
+        (0..self.n()).map(|i| self.velocity(i, kin, c)).collect()
     }
 
     pub fn center_of_mass(&self) -> Vec3 {

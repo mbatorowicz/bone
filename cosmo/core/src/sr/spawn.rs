@@ -275,6 +275,7 @@ fn scale_to_virial(
     rotation: &[Vec3],
     dispersion: &[Vec3],
     masses: &[f64],
+    kin: sr::Kinematics,
     c: f64,
     target: f64,
 ) -> f64 {
@@ -285,9 +286,9 @@ fn scale_to_virial(
             .zip(masses.iter())
             .map(|((rot, disp), m)| {
                 let v = *rot + *disp * scale;
-                let (v, _) = sr::clamp_initial_speed(v, c);
-                match sr::momentum(*m, v, c) {
-                    Ok(p) => sr::kinetic_energy(*m, p, c),
+                let (v, _) = kin.clamp_initial(v, c);
+                match kin.momentum(*m, v, c) {
+                    Ok(p) => kin.kinetic_energy(*m, p, c),
                     Err(_) => 0.0,
                 }
             })
@@ -351,7 +352,7 @@ pub fn make_state(cfg: &Config) -> Spawned {
         // liczby — dopiero wtedy dwa różne kształty można ze sobą porównywać.
         let target = 0.5 * sp.virial * potential_energy(&positions, &masses, ph.g, ph.softening);
         let noise: Vec<Vec3> = (0..n).map(|_| rng.normal_vec(0.0, 1.0)).collect();
-        let s = scale_to_virial(&rotation_part, &noise, &masses, ph.c, target);
+        let s = scale_to_virial(&rotation_part, &noise, &masses, ph.kinematics, ph.c, target);
         noise.into_iter().map(|v| v * s).collect()
     } else if sp.temperature.abs() > 1e-9 {
         let sigma = sp.temperature * ph.c / 3.0f64.sqrt();
@@ -360,15 +361,16 @@ pub fn make_state(cfg: &Config) -> Spawned {
         vec![ZERO; n]
     };
 
-    // Warunek początkowy musi być fizyczny: |v| < c z zapasem.
+    // W SR warunek początkowy musi być fizyczny: |v| < c z zapasem. Newton nie przycina.
+    let kin = ph.kinematics;
     let mut clamped = 0usize;
     let mut momenta = Vec::with_capacity(n);
     for i in 0..n {
-        let (v, hit) = sr::clamp_initial_speed(rotation_part[i] + dispersion_part[i], ph.c);
+        let (v, hit) = kin.clamp_initial(rotation_part[i] + dispersion_part[i], ph.c);
         if hit {
             clamped += 1;
         }
-        momenta.push(sr::momentum(masses[i], v, ph.c).unwrap_or(ZERO));
+        momenta.push(kin.momentum(masses[i], v, ph.c).unwrap_or(ZERO));
     }
     if clamped > 0 {
         // Przycięcie ratuje całkowanie, ale niszczy zamawiany warunek początkowy:
@@ -438,7 +440,7 @@ fn rotation_velocities(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sr::config::{PhysicsConfig, SpawnConfig};
+    use crate::sr::config::{Kinematics, PhysicsConfig, SpawnConfig};
 
     fn cfg_for(geometry: Geometry, n: usize) -> Config {
         Config {
@@ -577,7 +579,7 @@ mod tests {
 
             let c = cfg.physics.c;
             let kinetic: f64 = (0..s.n())
-                .map(|i| sr::kinetic_energy(s.masses[i], s.momenta[i], c))
+                .map(|i| cfg.physics.kinematics.kinetic_energy(s.masses[i], s.momenta[i], c))
                 .sum();
             let u = potential_energy(
                 &s.positions,
@@ -614,7 +616,11 @@ mod tests {
             cfg.spawn.temperature = 0.05;
             let s = make_state(&cfg).state;
             let kinetic: f64 = (0..s.n())
-                .map(|i| sr::kinetic_energy(s.masses[i], s.momenta[i], cfg.physics.c))
+                .map(|i| {
+                    cfg.physics
+                        .kinematics
+                        .kinetic_energy(s.masses[i], s.momenta[i], cfg.physics.c)
+                })
                 .sum();
             let u = potential_energy(
                 &s.positions,
@@ -656,7 +662,11 @@ mod tests {
 
         let kinetic = |s: &State| -> f64 {
             (0..s.n())
-                .map(|i| sr::kinetic_energy(s.masses[i], s.momenta[i], cfg.physics.c))
+                .map(|i| {
+                    cfg.physics
+                        .kinematics
+                        .kinetic_energy(s.masses[i], s.momenta[i], cfg.physics.c)
+                })
                 .sum()
         };
         assert!(
@@ -692,6 +702,42 @@ mod tests {
             "przycięcie prędkości przemilczane"
         );
         assert!(spawned.state.is_finite());
+    }
+
+    /// Newton nie przycina |v| > c — nadświetlność jest wynikiem kinematyki, nie błędem IC.
+    #[test]
+    fn newton_spawn_allows_superluminal_speeds() {
+        let cfg = Config {
+            spawn: SpawnConfig {
+                geometry: Geometry::Ball,
+                n_particles: 500,
+                rotation: 1.0,
+                total_mass: 1e6,
+                radius: 1.0,
+                ..SpawnConfig::default()
+            },
+            physics: PhysicsConfig {
+                g: 10.0,
+                c: 1.0,
+                kinematics: Kinematics::Newton,
+                ..PhysicsConfig::default()
+            },
+            ..Config::default()
+        };
+        let spawned = make_state(&cfg);
+        assert!(
+            spawned.warnings.is_empty(),
+            "Newton nie powinien ostrzegać o przycięciu: {:?}",
+            spawned.warnings
+        );
+        let max_beta = (0..spawned.state.n())
+            .map(|i| {
+                spawned
+                    .state
+                    .speed_over_c(i, cfg.physics.kinematics, cfg.physics.c)
+            })
+            .fold(0.0f64, f64::max);
+        assert!(max_beta > 1.0, "max β={max_beta} — za słaba rotacja?");
     }
 
     #[test]

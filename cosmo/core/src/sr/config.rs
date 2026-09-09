@@ -14,6 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::sr::relativity::Kinematics;
+
 /// Kształt chmury początkowej.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -183,8 +185,11 @@ pub struct PhysicsConfig {
     pub accuracy: f64,
     pub adaptive_dt: bool,
 
+    /// Kinematyka: Newton `v = p/m` albo SR `p = γmv`. Siła zostaje ta sama.
+    pub kinematics: Kinematics,
+
     /// Tempo tłumienia dyspersji prędkości przy ŚREDNIEJ gęstości układu, w 1/czas.
-    /// Odwrotność jest czasem chłodzenia. Domyślne zero, bo dyssypacja zmienia
+    /// Odwrotność jest czasem tłumienia. Domyślne zero, bo dyssypacja zmienia
     /// klasę modelu i nie powinna się włączać niepostrzeżenie.
     pub cooling_rate: f64,
     /// Wykładnik zależności tempa od gęstości. 1 odpowiada emisyjności ∝ n² na
@@ -218,6 +223,7 @@ impl Default for PhysicsConfig {
             dt_max: 0.02,
             accuracy: 0.03,
             adaptive_dt: true,
+            kinematics: Kinematics::Sr,
             cooling_rate: 0.0,
             cooling_density_power: 1.0,
             cooling_floor: 0.0,
@@ -307,6 +313,7 @@ impl Config {
         out.physics.dt_max = live.physics.dt_max;
         out.physics.accuracy = live.physics.accuracy;
         out.physics.adaptive_dt = live.physics.adaptive_dt;
+        out.physics.kinematics = live.physics.kinematics;
         out.physics.cooling_rate = live.physics.cooling_rate;
         out.physics.cooling_density_power = live.physics.cooling_density_power;
         out.physics.cooling_floor = live.physics.cooling_floor;
@@ -363,6 +370,7 @@ mod tests {
         live.solver.backend = BackendKind::Mesh;
         live.solver.grid = 128;
         live.physics.g = 0.5;
+        live.physics.kinematics = Kinematics::Newton;
         live.physics.cooling_rate = 1.0;
         live.physics.cooling_grid = 32;
         let next = start.with_runtime_from(&live);
@@ -372,6 +380,7 @@ mod tests {
         assert_eq!(next.solver.grid, start.solver.grid);
         assert_eq!(next.physics.cooling_grid, start.physics.cooling_grid);
         assert_eq!(next.physics.g, 0.5);
+        assert_eq!(next.physics.kinematics, Kinematics::Newton);
         assert_eq!(next.physics.cooling_rate, 1.0);
     }
 
@@ -388,5 +397,6 @@ mod tests {
         let cfg = Config::from_json(text).unwrap();
         assert_eq!(cfg.spawn.n_particles, 12);
         assert_eq!(cfg.physics.c, PhysicsConfig::default().c);
+        assert_eq!(cfg.physics.kinematics, Kinematics::Sr);
     }
 }

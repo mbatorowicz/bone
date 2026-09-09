@@ -75,8 +75,9 @@ pub fn step(backend: &mut dyn Backend, state: &mut State, phys: &PhysicsConfig) 
             *p += *f * half;
         }
     }
+    let kin = phys.kinematics;
     for i in 0..state.positions.len() {
-        state.positions[i] += sr::velocity(state.masses[i], state.momenta[i], phys.c) * dt;
+        state.positions[i] += kin.velocity(state.masses[i], state.momenta[i], phys.c) * dt;
     }
 
     let field = backend.compute(&state.positions, &state.masses, phys.g, phys.softening);
@@ -153,7 +154,7 @@ mod tests {
         let energy = |s: &State, b: &mut Exact| -> f64 {
             let field = b.compute(&s.positions, &s.masses, ph.g, ph.softening);
             let kinetic: f64 = (0..s.n())
-                .map(|i| sr::kinetic_energy(s.masses[i], s.momenta[i], ph.c))
+                .map(|i| ph.kinematics.kinetic_energy(s.masses[i], s.momenta[i], ph.c))
                 .sum();
             kinetic + field.energy(&s.masses)
         };
@@ -251,6 +252,7 @@ mod tests {
             softening: 1e-3,
             dt_max: 0.01,
             adaptive_dt: false,
+            kinematics: crate::sr::relativity::Kinematics::Sr,
             ..PhysicsConfig::default()
         };
         let mut backend = Exact::new();
@@ -263,10 +265,41 @@ mod tests {
         for _ in 0..500 {
             step(&mut backend, &mut state, &ph);
             for i in 0..state.n() {
-                let beta = state.speed_over_c(i, ph.c);
+                let beta = state.speed_over_c(i, ph.kinematics, ph.c);
                 assert!(beta < 1.0, "β={beta}");
             }
         }
+    }
+
+    /// Ten sam leapfrog, inna kinematyka: Newton nie ma stropu na |v|.
+    #[test]
+    fn newton_kinematics_can_exceed_c_under_extreme_force() {
+        let ph = PhysicsConfig {
+            g: 1e6,
+            c: 1.0,
+            softening: 1e-3,
+            dt_max: 0.01,
+            adaptive_dt: false,
+            kinematics: crate::sr::relativity::Kinematics::Newton,
+            ..PhysicsConfig::default()
+        };
+        let mut backend = Exact::new();
+        let mut state = State::new(
+            vec![vec3(-0.01, 0.0, 0.0), vec3(0.01, 0.0, 0.0)],
+            vec![ZERO, ZERO],
+            vec![1.0, 1.0],
+        )
+        .unwrap();
+        let mut exceeded = false;
+        for _ in 0..500 {
+            step(&mut backend, &mut state, &ph);
+            for i in 0..state.n() {
+                if state.speed_over_c(i, ph.kinematics, ph.c) > 1.0 {
+                    exceeded = true;
+                }
+            }
+        }
+        assert!(exceeded, "Newton miał dać |v| > c przy tej samej sile co test SR");
     }
 
     #[test]

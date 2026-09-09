@@ -9,7 +9,7 @@
 //! rozmiaru komórki — lepiej poprosić o to, co jest osiągalne.
 
 use crate::sr::config::{
-    gravity_for_beta, Config, Geometry, PhysicsConfig, SolverConfig, SpawnConfig,
+    gravity_for_beta, Config, Geometry, Kinematics, PhysicsConfig, SolverConfig, SpawnConfig,
 };
 
 /// Nazwany zestaw parametrów.
@@ -168,6 +168,7 @@ pub fn relativistic() -> Config {
             softening: 0.5,
             dt_max: 0.004,
             accuracy: 0.02,
+            kinematics: Kinematics::Sr,
             ..base.physics
         },
         solver: SolverConfig {

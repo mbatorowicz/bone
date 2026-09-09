@@ -481,10 +481,11 @@ impl Session {
                     return Ok(());
                 }
                 let state = &run.engine.state;
+                let kin = run.engine.cfg.physics.kinematics;
                 let c = run.engine.cfg.physics.c;
                 recorder
                     .push(state.time, &state.positions, |i| {
-                        sr::relativity::speed_over_c(state.masses[i], state.momenta[i], c) as f32
+                        kin.speed_over_c(state.masses[i], state.momenta[i], c) as f32
                     })
                     .map_err(|e| format!("zapis klatki: {e}"))
             }
@@ -698,10 +699,11 @@ impl Session {
 
     pub fn shade(&self, index: usize) -> f32 {
         match &self.run {
-            Run::Relativistic(run) => run
-                .engine
-                .state
-                .speed_over_c(index, run.engine.cfg.physics.c) as f32,
+            Run::Relativistic(run) => run.engine.state.speed_over_c(
+                index,
+                run.engine.cfg.physics.kinematics,
+                run.engine.cfg.physics.c,
+            ) as f32,
             Run::Cosmological(run) => run.engine.shade(index),
             Run::Particles(run) => run.engine.shade(index),
             Run::Atoms(run) => run.engine.shade(index),

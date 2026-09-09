@@ -1,17 +1,89 @@
-//! Kinematyka szczególnej teorii względności.
+//! Kinematyka N-ciał: Newton albo szczególna teoria względności.
 //!
-//! Stanem cząstki jest pęd `p`, nie prędkość. Dzięki temu
+//! Stanem cząstki jest pęd `p`, nie prędkość. Leapfrog jest ten sam
+//! (`dp/dt = F`, `dx/dt = v(p)`); przełącznik decyduje tylko, jak pęd
+//! przechodzi na prędkość i energię.
 //!
 //! ```text
-//! γ = E/(mc²) = √(1 + (|p|/mc)²)
+//! Newton:  v = p/m,           E = |p|²/(2m)
+//! SR:      v = p c²/E,        E = (γ−1)mc²,   γ = √(1 + (|p|/mc)²)
 //! ```
 //!
-//! jest zawsze skończone i ≥ 1, niezależnie od tego, jak duża jest siła. Żaden
-//! clamp prędkości nie jest potrzebny — |v| → c asymptotycznie z samej definicji.
-//! Wariant trzymający `v` wymagałby przycinania β² poniżej jedności, co maskuje
-//! błędy całkowania zamiast im zapobiegać.
+//! W SR |v| → c asymptotycznie z samej definicji — żaden clamp prędkości nie jest
+//! potrzebny. W Newtonie |v| może przekroczyć c: to jest wynik, nie błąd.
+
+use serde::{Deserialize, Serialize};
 
 use crate::vec3::Vec3;
+
+/// Wybór kinematyki. Siła zostaje newtonowska; zmienia się tylko `p ↔ v` i energia.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kinematics {
+    Newton,
+    #[default]
+    Sr,
+}
+
+impl Kinematics {
+    pub const ALL: [Kinematics; 2] = [Self::Newton, Self::Sr];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Newton => "Newton",
+            Self::Sr => "SR",
+        }
+    }
+
+    /// `v(p)`: Newton `p/m`, SR `p c²/E`.
+    pub fn velocity(self, mass: f64, momentum: Vec3, c: f64) -> Vec3 {
+        match self {
+            Self::Newton => momentum / rest_mass(mass),
+            Self::Sr => velocity(mass, momentum, c),
+        }
+    }
+
+    /// `p(v)`: Newton zawsze `mv`; SR odrzuca |v| ≥ c.
+    pub fn momentum(self, mass: f64, velocity: Vec3, c: f64) -> Result<Vec3, SuperluminalError> {
+        match self {
+            Self::Newton => Ok(velocity * rest_mass(mass)),
+            Self::Sr => momentum(mass, velocity, c),
+        }
+    }
+
+    /// Energia kinetyczna: Newton `|p|²/2m`, SR `(γ−1)mc²`.
+    pub fn kinetic_energy(self, mass: f64, momentum: Vec3, c: f64) -> f64 {
+        match self {
+            Self::Newton => momentum.norm_squared() / (2.0 * rest_mass(mass)),
+            Self::Sr => kinetic_energy(mass, momentum, c),
+        }
+    }
+
+    /// `γ`: w Newtonie zawsze 1 — ta kinematyka nie ma czynnika Lorentza.
+    pub fn gamma(self, mass: f64, momentum: Vec3, c: f64) -> f64 {
+        match self {
+            Self::Newton => 1.0,
+            Self::Sr => gamma(mass, momentum, c),
+        }
+    }
+
+    /// `|v|/c`. W Newtonie może być > 1.
+    pub fn speed_over_c(self, mass: f64, momentum: Vec3, c: f64) -> f64 {
+        match self {
+            Self::Newton => momentum.norm() / (rest_mass(mass) * c.max(1e-300)),
+            Self::Sr => speed_over_c(mass, momentum, c),
+        }
+    }
+
+    /// Przytnij warunek początkowy do `MAX_INITIAL_BETA·c`. Newton nie przycina:
+    /// nadświetlność jest tam dozwolonym wynikiem, nie błędem wejścia.
+    pub fn clamp_initial(self, velocity: Vec3, c: f64) -> (Vec3, bool) {
+        match self {
+            Self::Newton => (velocity, false),
+            Self::Sr => clamp_initial_speed(velocity, c),
+        }
+    }
+}
 
 /// Masa, poniżej której cząstka przestaje mieć sens jako obiekt masywny.
 ///
@@ -195,5 +267,46 @@ mod tests {
     fn massless_particle_does_not_produce_nan() {
         let g = gamma(0.0, vec3(1.0, 0.0, 0.0), C);
         assert!(g.is_finite() && g >= 1.0, "γ={g}");
+    }
+
+    /// Przy małym β oba wzory energii muszą się zgadzać — inaczej przełącznik
+    /// kłamałby już w granicy, w której Newton i SR są tym samym.
+    #[test]
+    fn small_beta_newton_and_sr_energies_agree() {
+        let m = 3.0;
+        let v = vec3(0.001 * C, 0.0, 0.0);
+        let p_n = Kinematics::Newton.momentum(m, v, C).unwrap();
+        let p_s = Kinematics::Sr.momentum(m, v, C).unwrap();
+        let t_n = Kinematics::Newton.kinetic_energy(m, p_n, C);
+        let t_s = Kinematics::Sr.kinetic_energy(m, p_s, C);
+        assert!(
+            (t_n - t_s).abs() / t_n.max(t_s) < 1e-5,
+            "Newton {t_n} vs SR {t_s}"
+        );
+        let classical = 0.5 * m * v.norm_squared();
+        assert!((t_n - classical).abs() / classical < 1e-12);
+    }
+
+    /// Przy dużym pędzie Newton daje |v| > c; SR nigdy.
+    #[test]
+    fn large_beta_only_sr_stays_below_c() {
+        let m = 1.0;
+        let p = vec3(10.0 * m * C, 0.0, 0.0);
+        let v_n = Kinematics::Newton.velocity(m, p, C).norm();
+        let v_s = Kinematics::Sr.velocity(m, p, C).norm();
+        assert!(v_n > C, "Newton |v|={v_n} miało przekroczyć c={C}");
+        assert!(v_s < C, "SR |v|={v_s} nie wolno przekroczyć c");
+        assert_eq!(Kinematics::Newton.gamma(m, p, C), 1.0);
+        assert!(Kinematics::Newton.speed_over_c(m, p, C) > 1.0);
+        assert!(Kinematics::Sr.speed_over_c(m, p, C) < 1.0);
+    }
+
+    #[test]
+    fn newton_accepts_superluminal_initial_velocity() {
+        let v = vec3(2.0 * C, 0.0, 0.0);
+        assert!(Kinematics::Newton.momentum(1.0, v, C).is_ok());
+        assert!(Kinematics::Sr.momentum(1.0, v, C).is_err());
+        let (clamped, hit) = Kinematics::Newton.clamp_initial(v, C);
+        assert!(!hit && (clamped.x - v.x).abs() < 1e-15);
     }
 }

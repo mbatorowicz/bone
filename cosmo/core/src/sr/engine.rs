@@ -109,7 +109,8 @@ impl Engine {
                 None
             },
         };
-        self.diagnostics.observe(&self.state, self.cfg.physics.c, ctx)
+        self.diagnostics
+            .observe(&self.state, self.cfg.physics.kinematics, self.cfg.physics.c, ctx)
     }
 
     pub fn effective_softening(&self) -> f64 {
@@ -154,6 +155,7 @@ impl Engine {
         let field_invalid = self.cfg.field_invalidated(&next);
         let cooling_changed = self.cfg.physics.cooling_grid != next.physics.cooling_grid
             || self.cfg.solver.box_margin != next.solver.box_margin;
+        let kinematics_changed = self.cfg.physics.kinematics != next.physics.kinematics;
         self.cfg = next;
 
         if cooling_changed {
@@ -168,6 +170,8 @@ impl Engine {
         if solver_changed || field_invalid {
             self.state.invalidate_field();
             integrator::ensure_field(self.backend.as_mut(), &mut self.state, &self.cfg.physics);
+            self.diagnostics.reset_reference();
+        } else if kinematics_changed {
             self.diagnostics.reset_reference();
         }
     }
@@ -389,12 +393,12 @@ mod tests {
     #[test]
     fn describe_mentions_cooling_only_when_enabled() {
         let eng = Engine::new(small(100));
-        assert!(!eng.describe().contains("chłodzenie"));
+        assert!(!eng.describe().contains("tłumienie"));
 
         let mut cfg = small(100);
         cfg.physics.cooling_rate = 1.0;
         let eng = Engine::new(cfg);
-        assert!(eng.describe().contains("chłodzenie"));
+        assert!(eng.describe().contains("tłumienie"));
     }
 
     #[test]

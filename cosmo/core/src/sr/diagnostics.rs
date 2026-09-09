@@ -15,7 +15,7 @@
 //! brak wiersza w tabelce, a nie jako błąd.
 
 use crate::sr::backends::exact::forces_for_rows;
-use crate::sr::relativity as sr;
+use crate::sr::relativity::Kinematics;
 use crate::sr::state::State;
 use crate::vec3::Vec3;
 
@@ -101,10 +101,10 @@ impl Diagnostics {
     /// niej włączenie chłodzenia zamieniłoby dryf energii — główny wskaźnik jakości
     /// całkowania — w licznik tego, ile energii celowo wyrzuciliśmy. Wielkością
     /// zachowaną w modelu z dyssypacją jest `E_tot + E_odprowadzona`.
-    pub fn observe(&mut self, state: &State, c: f64, ctx: Context) -> Snapshot {
+    pub fn observe(&mut self, state: &State, kin: Kinematics, c: f64, ctx: Context) -> Snapshot {
         let n = state.n();
         let kinetic: f64 = (0..n)
-            .map(|i| sr::kinetic_energy(state.masses[i], state.momenta[i], c))
+            .map(|i| kin.kinetic_energy(state.masses[i], state.momenta[i], c))
             .sum();
         let potential = match state.potential.as_ref() {
             Some(phi) => 0.5 * state.masses.iter().zip(phi.iter()).map(|(m, p)| m * p).sum::<f64>(),
@@ -118,8 +118,8 @@ impl Diagnostics {
         let mut beta_max = 0.0f64;
         let mut momentum_scale = 0.0;
         for i in 0..n {
-            let g = state.gamma(i, c);
-            let b = state.speed_over_c(i, c);
+            let g = state.gamma(i, kin, c);
+            let b = state.speed_over_c(i, kin, c);
             gamma_sum += g;
             beta_sum += b;
             gamma_max = gamma_max.max(g);
@@ -299,7 +299,7 @@ mod tests {
     fn drift_is_zero_on_the_first_observation() {
         let state = with_field(cloud(200), 0.16, 0.25);
         let mut d = Diagnostics::new();
-        let snap = d.observe(&state, C, Context::default());
+        let snap = d.observe(&state, Kinematics::Sr, C, Context::default());
         assert_eq!(snap.energy_drift, 0.0);
         assert_eq!(snap.angular_drift, 0.0);
         assert!((snap.half_mass_ratio - 1.0).abs() < 1e-12);
@@ -311,7 +311,7 @@ mod tests {
     fn removed_energy_does_not_count_as_drift() {
         let state = with_field(cloud(200), 0.16, 0.25);
         let mut d = Diagnostics::new();
-        let first = d.observe(&state, C, Context::default());
+        let first = d.observe(&state, Kinematics::Sr, C, Context::default());
 
         // udajemy, że chłodzenie zabrało 10% energii i tyle samo zniknęło z układu
         let removed = 0.1 * first.total_energy.abs();
@@ -321,6 +321,7 @@ mod tests {
         }
         let after = d.observe(
             &cooled,
+            Kinematics::Sr,
             C,
             Context {
                 energy_removed: removed,
@@ -337,7 +338,7 @@ mod tests {
     fn virial_equals_two_k_over_u() {
         let state = with_field(cloud(300), 0.16, 0.25);
         let mut d = Diagnostics::new();
-        let snap = d.observe(&state, C, Context::default());
+        let snap = d.observe(&state, Kinematics::Sr, C, Context::default());
         let expected = 2.0 * snap.kinetic / snap.potential.abs();
         assert!((snap.virial - expected).abs() < 1e-12);
     }
@@ -356,7 +357,7 @@ mod tests {
             0.25,
         );
         let mut d = Diagnostics::new();
-        let snap = d.observe(&state, C, Context::default());
+        let snap = d.observe(&state, Kinematics::Sr, C, Context::default());
         assert!((snap.gamma_mean - 1.0).abs() < 1e-12);
         assert!((snap.gamma_max - 1.0).abs() < 1e-12);
         assert_eq!(snap.beta_mean, 0.0);
@@ -368,16 +369,16 @@ mod tests {
     fn reset_reference_rebases_the_drift() {
         let state = with_field(cloud(150), 0.16, 0.25);
         let mut d = Diagnostics::new();
-        d.observe(&state, C, Context::default());
+        d.observe(&state, Kinematics::Sr, C, Context::default());
         let mut hotter = state.clone();
         for p in &mut hotter.momenta {
             *p = *p * 2.0;
         }
-        let drifted = d.observe(&hotter, C, Context::default());
+        let drifted = d.observe(&hotter, Kinematics::Sr, C, Context::default());
         assert!(drifted.energy_drift.abs() > 1e-6);
 
         d.reset_reference();
-        let rebased = d.observe(&hotter, C, Context::default());
+        let rebased = d.observe(&hotter, Kinematics::Sr, C, Context::default());
         assert_eq!(rebased.energy_drift, 0.0);
     }
 
@@ -386,7 +387,7 @@ mod tests {
         let state = with_field(cloud(50), 0.16, 0.25);
         let mut d = Diagnostics::new();
         for _ in 0..5 {
-            d.observe(&state, C, Context::default());
+            d.observe(&state, Kinematics::Sr, C, Context::default());
         }
         assert_eq!(d.history.len(), 5);
         assert!(d.latest().is_some());
@@ -445,6 +446,6 @@ mod tests {
             0.25,
         );
         let mut d = Diagnostics::new();
-        assert!(d.observe(&state, C, Context::default()).momentum_residual < 1e-15);
+        assert!(d.observe(&state, Kinematics::Sr, C, Context::default()).momentum_residual < 1e-15);
     }
 }
