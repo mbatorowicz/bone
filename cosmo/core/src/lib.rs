@@ -1,4 +1,4 @@
-//! Grawitacja N ciał i gaz cząstek elementarnych: trzy modele na wspólnym silniku.
+//! Grawitacja N ciał, gaz cząstek i atomy: cztery modele na wspólnym silniku.
 //!
 //! # Co tu jest
 //!
@@ -11,6 +11,9 @@
 //! - [`sm`] — Model Standardowy jako klasyczny gaz cząstek. Siedemnaście gatunków
 //!   elementarnych plus hadrony, cztery oddziaływania, rozpady i anihilacja.
 //!   To nie jest kwantowa teoria pola — granice opisu są wypisane w [`sm`].
+//! - [`qm`] — atomy i orbitale. Wodór i jony wodoropodobne są dokładnym
+//!   rozwiązaniem Schrödingera; wieloelektronowe atomy — przybliżeniem Slatera
+//!   z mierzonym błędem wobec tablic jonizacji. To nie jest QFT.
 //!
 //! # Co jest wspólne
 //!
@@ -30,6 +33,7 @@ pub mod grid;
 pub mod io;
 pub mod lcdm;
 pub mod mesh;
+pub mod qm;
 pub mod rng;
 pub mod session;
 pub mod sm;

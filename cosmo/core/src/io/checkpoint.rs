@@ -18,6 +18,7 @@ use crate::io::binary::{
     write_u32_slice, write_u64,
 };
 use crate::lcdm::{self, Cosmology};
+use crate::qm;
 use crate::sm;
 use crate::sm::particles::Particle;
 use crate::sr::config::Config;
@@ -27,6 +28,7 @@ use crate::vec3::{vec3, Vec3};
 const MAGIC_SR: &[u8] = b"BONECKP1";
 const MAGIC_LCDM: &[u8] = b"BONELCD1";
 const MAGIC_SM: &[u8] = b"BONESMP1";
+const MAGIC_QM: &[u8] = b"BONEQMA1";
 pub const STATE_FILE: &str = "checkpoint.bin";
 pub const CONFIG_FILE: &str = "config.json";
 
@@ -36,6 +38,7 @@ pub enum Kind {
     Relativistic,
     Cosmological,
     Particles,
+    Atoms,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -105,6 +108,7 @@ pub fn kind(out_dir: impl AsRef<Path>) -> Option<Kind> {
         m if m == MAGIC_SR => Some(Kind::Relativistic),
         m if m == MAGIC_LCDM => Some(Kind::Cosmological),
         m if m == MAGIC_SM => Some(Kind::Particles),
+        m if m == MAGIC_QM => Some(Kind::Atoms),
         _ => None,
     }
 }
@@ -164,6 +168,48 @@ pub fn load_sm(out_dir: impl AsRef<Path>) -> io::Result<(sm::State, sm::Config)>
     state.time = time;
     state.step = step;
     Ok((state, load_sm_config(dir).unwrap_or_default()))
+}
+
+pub fn save_qm(
+    state: &qm::State,
+    cfg: &qm::Config,
+    out_dir: impl AsRef<Path>,
+) -> io::Result<PathBuf> {
+    let dir = out_dir.as_ref();
+    fs::create_dir_all(dir)?;
+
+    let path = dir.join(STATE_FILE);
+    let mut out = BufWriter::new(File::create(&path)?);
+    out.write_all(MAGIC_QM)?;
+    write_u64(&mut out, state.n() as u64)?;
+    write_f64(&mut out, state.time)?;
+    write_u64(&mut out, state.step)?;
+    write_f64_slice(&mut out, &flatten(&state.positions))?;
+    drop(out);
+
+    fs::write(dir.join(CONFIG_FILE), cfg.to_json())?;
+    Ok(path)
+}
+
+pub fn load_qm_config(out_dir: impl AsRef<Path>) -> Option<qm::Config> {
+    let text = fs::read_to_string(out_dir.as_ref().join(CONFIG_FILE)).ok()?;
+    qm::Config::from_json(&text).ok()
+}
+
+pub fn load_qm(out_dir: impl AsRef<Path>) -> io::Result<(qm::State, qm::Config)> {
+    let dir = out_dir.as_ref();
+    let mut input = BufReader::new(File::open(dir.join(STATE_FILE))?);
+    expect_magic(&mut input, MAGIC_QM)?;
+    let n = read_u64(&mut input)? as usize;
+    let time = read_f64(&mut input)?;
+    let step = read_u64(&mut input)?;
+    let positions = unflatten(read_f64_vec(&mut input, n * 3)?);
+    let shades = vec![0.5_f32; n];
+    let mut state = qm::State::new(positions, shades)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    state.time = time;
+    state.step = step;
+    Ok((state, load_qm_config(dir).unwrap_or_default()))
 }
 
 pub fn save_lcdm(engine: &lcdm::Engine, out_dir: impl AsRef<Path>) -> io::Result<PathBuf> {
@@ -402,6 +448,28 @@ mod tests {
             assert_eq!(back.momenta[i], state.momenta[i], "cząstka {i}");
         }
         assert_eq!(back_cfg, cfg);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn qm_state_survives_round_trip() {
+        let dir = temp_dir("ckp-qm");
+        let mut cfg = crate::qm::presets::wodor();
+        cfg.run.n_samples = 64;
+        cfg.run.sparkle = false;
+        let mut engine = crate::qm::Engine::new(cfg.clone());
+        engine.advance(2).unwrap();
+        let time = engine.state.time;
+        let step = engine.state.step;
+        let first = engine.state.positions[0];
+        save_qm(&engine.state, &engine.cfg, &dir).unwrap();
+        assert_eq!(kind(&dir), Some(Kind::Atoms));
+        let (back, back_cfg) = load_qm(&dir).unwrap();
+        assert_eq!(back.n(), 64);
+        assert_eq!(back.time, time);
+        assert_eq!(back.step, step);
+        assert_eq!(back.positions[0], first);
+        assert_eq!(back_cfg.scene, cfg.scene);
         fs::remove_dir_all(&dir).ok();
     }
 }

@@ -11,22 +11,24 @@
 use std::path::PathBuf;
 
 use crate::lcdm;
+use crate::qm;
 use crate::session::Session;
 use crate::sm;
 use crate::sr;
 
 const HELP: &str = "\
-bone — grawitacja N ciał i cząstki elementarne
+bone — grawitacja N ciał, cząstki i atomy
 
     bone                          okno z panelem (domyślnie)
     bone sr      [opcje]          odosobniona chmura, kinematyka SR
     bone lcdm    [opcje]          próbka wszechświata ΛCDM (Planck 2018)
     bone sm      [opcje]          Model Standardowy: gaz cząstek elementarnych
-    bone presety                  wypisz nazwy zestawów nastaw (sr i sm)
+    bone qm      [opcje]          atomy i orbitale (Schrödinger / Slater)
+    bone presety                  wypisz nazwy zestawów nastaw (sr, sm, qm)
     bone --pomoc                  ten opis
 
 Opcje wspólne:
-    --kroki N                     ile kroków policzyć (0 = bez limitu dla SR/SM)
+    --kroki N                     ile kroków policzyć (0 = bez limitu dla SR/SM/QM)
     --do KATALOG                  gdzie zapisać wynik
     --cicho                       nie wypisuj pomiarów w trakcie
 
@@ -40,6 +42,12 @@ Opcje trybu sm:
     --zestaw NAZWA                plazma | para | miony | anihilacja | piony | uwiezienie
     --config PLIK                 konfiguracja z pliku JSON
     --czastek N                   przeskaluj mieszankę do N cząstek
+    --wznow                       wznów z checkpointu w katalogu wyjściowym
+
+Opcje trybu qm:
+    --zestaw NAZWA                wodor | orbital_2p | superpozycja | wegiel | …
+    --config PLIK                 konfiguracja z pliku JSON
+    --czastek N                   liczba próbek chmury |ψ|²
     --wznow                       wznów z checkpointu w katalogu wyjściowym
 
 Opcje trybu lcdm:
@@ -58,6 +66,7 @@ pub enum Command {
     Relativistic(RelativisticJob),
     Cosmological(CosmologicalJob),
     Particles(ParticlesJob),
+    Atoms(AtomsJob),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -88,6 +97,15 @@ pub struct CosmologicalJob {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ParticlesJob {
+    pub shared: Shared,
+    pub preset: Option<String>,
+    pub config_file: Option<PathBuf>,
+    pub particles: Option<usize>,
+    pub resume: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AtomsJob {
     pub shared: Shared,
     pub preset: Option<String>,
     pub config_file: Option<PathBuf>,
@@ -189,6 +207,20 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
                 resume,
             }))
         }
+        "qm" | "atom" | "atomy" => {
+            reject_foreign(&[
+                ("--siatka", n_grid.is_some()),
+                ("--probka", box_size.is_some()),
+                ("--z-koniec", z_end.is_some()),
+            ])?;
+            Ok(Command::Atoms(AtomsJob {
+                shared,
+                preset,
+                config_file,
+                particles,
+                resume,
+            }))
+        }
         other => Err(format!("nieznane polecenie: {other}")),
     }
 }
@@ -228,11 +260,16 @@ pub fn execute(command: Command) -> Result<(), String> {
             for id in sm::presets::ids() {
                 println!("  {id}");
             }
+            println!("qm:");
+            for id in qm::presets::ids() {
+                println!("  {id}");
+            }
             Ok(())
         }
         Command::Relativistic(job) => run_relativistic(job),
         Command::Cosmological(job) => run_cosmological(job),
         Command::Particles(job) => run_particles(job),
+        Command::Atoms(job) => run_atoms(job),
     }
 }
 
@@ -427,6 +464,69 @@ fn build_sm_config(job: &ParticlesJob) -> Result<sm::Config, String> {
     Ok(cfg)
 }
 
+fn run_atoms(job: AtomsJob) -> Result<(), String> {
+    let out = job.shared.out_dir.clone();
+    let mut session = if job.resume {
+        Session::resume(out, true)?
+    } else {
+        Session::start_qm(build_qm_config(&job)?, out, true)?
+    };
+
+    let limit = if job.shared.steps > 0 {
+        job.shared.steps
+    } else if job.resume {
+        400
+    } else {
+        build_qm_config(&job)?.run.steps.max(80)
+    };
+
+    for _ in 1..=limit {
+        let report = session.advance(1)?;
+        if let Some(hint) = session.accuracy_hint() {
+            eprintln!("uwaga: {hint}");
+        }
+        if let Some(snapshot) = session.qm_snapshot() {
+            let every = session.diagnostics_every();
+            if snapshot.step.is_multiple_of(every) && !job.shared.quiet {
+                println!(
+                    "krok {:>7}  t={:>10.3}  E={:>10.3} eV  ⟨r⟩={:>8.3} a₀  próbek={}",
+                    snapshot.step,
+                    snapshot.time,
+                    snapshot.energy_ev,
+                    snapshot.mean_r,
+                    snapshot.n
+                );
+            }
+        }
+        for warning in report.warnings {
+            eprintln!("ostrzeżenie: {warning}");
+        }
+    }
+
+    finish_session(&mut session, job.shared.quiet)
+}
+
+fn build_qm_config(job: &AtomsJob) -> Result<qm::Config, String> {
+    let mut cfg = match (&job.config_file, &job.preset) {
+        (Some(path), _) => {
+            let text = std::fs::read_to_string(path)
+                .map_err(|e| format!("nie mogę wczytać {}: {e}", path.display()))?;
+            qm::Config::from_json(&text).map_err(|e| format!("{}: {e}", path.display()))?
+        }
+        (None, Some(name)) => qm::presets::preset(name).ok_or_else(|| {
+            format!(
+                "nie znam zestawu „{name}”; dostępne: {}",
+                qm::presets::ids().join(", ")
+            )
+        })?,
+        (None, None) => qm::presets::wodor(),
+    };
+    if let Some(n) = job.particles {
+        cfg.run.n_samples = n.max(64);
+    }
+    Ok(cfg)
+}
+
 fn finish_session(session: &mut Session, quiet: bool) -> Result<(), String> {
     let frames = session.flush_recording()?;
     let path = session
@@ -554,6 +654,7 @@ mod tests {
         assert!(parse(&args("sr --kroki 5 --do x --cicho")).is_ok());
         assert!(parse(&args("lcdm --kroki 5 --do x --cicho")).is_ok());
         assert!(parse(&args("sm --kroki 5 --do x --cicho")).is_ok());
+        assert!(parse(&args("qm --kroki 5 --do x --cicho")).is_ok());
     }
 
     #[test]
@@ -610,8 +711,48 @@ mod tests {
     }
 
     #[test]
+    fn atoms_job_collects_its_options() {
+        let cmd = parse(&args(
+            "qm --zestaw superpozycja --kroki 40 --do wyniki/qm --czastek 2000 --cicho",
+        ))
+        .unwrap();
+        let Command::Atoms(job) = cmd else {
+            panic!("zły tryb: {cmd:?}");
+        };
+        assert_eq!(job.preset.as_deref(), Some("superpozycja"));
+        assert_eq!(job.shared.steps, 40);
+        assert_eq!(job.shared.out_dir, PathBuf::from("wyniki/qm"));
+        assert_eq!(job.particles, Some(2_000));
+        assert!(job.shared.quiet);
+        assert!(matches!(
+            parse(&args("atom --zestaw wodor")).unwrap(),
+            Command::Atoms(_)
+        ));
+    }
+
+    #[test]
+    fn unknown_qm_preset_names_are_reported_with_the_list() {
+        let job = AtomsJob {
+            shared: Shared {
+                steps: 1,
+                out_dir: PathBuf::from("x"),
+                quiet: true,
+            },
+            preset: Some("nie-ma-takiego".to_string()),
+            config_file: None,
+            particles: None,
+            resume: false,
+        };
+        let err = match build_qm_config(&job) {
+            Err(message) => message,
+            Ok(_) => panic!("nieznany zestaw został przyjęty"),
+        };
+        assert!(err.contains("wodor"), "brak listy w komunikacie: {err}");
+    }
+
+    #[test]
     fn help_text_mentions_every_command() {
-        for keyword in ["sr", "lcdm", "sm", "presety", "--kroki", "--wznow"] {
+        for keyword in ["sr", "lcdm", "sm", "qm", "presety", "--kroki", "--wznow"] {
             assert!(HELP.contains(keyword), "brak {keyword} w pomocy");
         }
     }

@@ -1,6 +1,6 @@
 # Bone
 
-Grawitacja N ciał i gaz cząstek elementarnych na jednym komputerze. Trzy modele,
+Grawitacja N ciał, gaz cząstek i atomy na jednym komputerze. Cztery modele,
 jeden silnik, jedna aplikacja w Ruście — okno z panelem albo bieg wsadowy
 z wiersza poleceń.
 
@@ -11,8 +11,12 @@ z wiersza poleceń.
 - **`sm`** — Model Standardowy jako klasyczny gaz cząstek. Siedemnaście gatunków
   elementarnych plus hadrony, cztery oddziaływania, rozpady i anihilacja.
   To nie jest kwantowa teoria pola.
+- **`qm`** — atomy i orbitale. Wodór i jony wodoropodobne są dokładnym
+  rozwiązaniem Schrödingera (`ψ_{nlm} = R_{nl} Y_{lm}`). Atomy wieloelektronowe
+  to niezależne elektrony z `Z_eff` Slatera; błąd wobec tablic jonizacji jest
+  mierzony i pokazywany. Chmura na ekranie to próbka `|ψ|²`, nie zbiór elektronów.
 
-Błąd solvera przybliżonego jest **mierzony i pokazywany**, nie zakładany. To jedyna
+Błąd przybliżenia jest **mierzony i pokazywany**, nie zakładany. To jedyna
 liczba, która odróżnia przybliżenie od usterki.
 
 ## Budowanie i uruchamianie
@@ -20,19 +24,21 @@ liczba, która odróżnia przybliżenie od usterki.
 ```bash
 cd cosmo
 cargo build --release          # wynik: target/release/BoneCosmo
-cargo test --workspace         # 399 testów
+cargo test --workspace         # 447 testów
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ```bash
 BoneCosmo                                        # okno z panelem
-BoneCosmo presety                                # nazwy zestawów nastaw SR
+BoneCosmo presety                                # nazwy zestawów nastaw SR, SM, QM
 BoneCosmo sr   --zestaw fragmentation --kroki 2000 --do runs/frag
 BoneCosmo lcdm --zestaw struktury --do runs/lss
 BoneCosmo sm   --zestaw plazma --kroki 400 --do runs/plazma
+BoneCosmo qm   --zestaw superpozycja --kroki 80 --do runs/atom
 BoneCosmo sr   --wznow --do runs/frag            # dalej z checkpointu
 BoneCosmo lcdm --wznow --do runs/lss             # to samo dla ΛCDM
 BoneCosmo sm   --wznow --do runs/plazma
+BoneCosmo qm   --wznow --do runs/atom
 BoneCosmo --pomoc
 ```
 
@@ -214,6 +220,53 @@ działa na `~1 fm/c`. Zestaw nastaw wybiera jedną z tych skal.
 | `piony` | π⁰ → γγ, masa spoczynkowa w ruch |
 | `uwiezienie` | para uū, potencjał Cornella |
 
+## Model atomów (QM): co to liczy
+
+Stany związane atomu wodoropodobnego są tu **dokładnym** rozwiązaniem równania
+Schrödingera, nie modelem Bohra:
+
+```
+ψ_{nlm}(r,θ,φ) = R_{nl}(r) Y_{lm}(θ,φ)
+E_n = −μ Z² / (2 n²) hartree
+```
+
+Chmura na ekranie to próbka `|ψ|²` (Metropolis–Hastings), nie zbiór elektronów.
+Jeden elektron w `1s` jest tysiącami punktów, bo inaczej orbitalu nie widać.
+Odcień pokazuje znak funkcji falowej (dwa płaty `2p_z` mają przeciwne znaki)
+albo numer powłoki w atomie wieloelektronowym.
+
+Superpozycja stanów o różnych `n` ewoluuje fazą `e^{−iEt/ħ}`. Gęstość bije —
+preset `superpozycja` (`1s + 2p_z`) pokazuje ten ruch. To nie jest klasyczna
+orbita.
+
+Atom wieloelektronowy (C, Ne, Na, Fe, …) jest przybliżeniem Slatera: każdy
+elektron w wodoropodobnym orbitalu z `Z_eff = Z − σ`. Diagnostyka porównuje
+energię orbitalu walencyjnego z pierwszą jonizacją NIST i **podaje błąd**.
+Na helu ten błąd jest duży (~60%) i to jest wynik, nie usterka.
+
+Panel rysuje funkcje, nie tylko chmurę: `R_{nl}(r)`, `P(r) = r²R²`, `|Y_{lm}|²`
+oraz drabinę poziomów i linie Rydberga (Lyman, Balmer, Paschen). Hα wychodzi
+656 nm, bo masa jądra jest skończona.
+
+### Czego to NIE jest
+
+To nie jest QFT, QED ani pełny atom wieloelektronowy. Brak korelacji, wymienności
+Hartree–Focka, struktury subtelnej jako dynamiki, cząsteczek i wiązań. Klasyczny
+model `sm` nadal nie wiąże elektronu z protonem — ten moduł odpowiada na inne
+pytanie.
+
+### Zestawy nastaw
+
+| zestaw | co pokazuje |
+|---|---|
+| `wodor` | H `1s`, rozwiązanie dokładne |
+| `orbital_2p` | `2p_z`: dwa płaty, węzeł na równiku |
+| `orbital_3d` | `3d_z²` |
+| `rydberg` | `n=8`, elektron daleko od jądra |
+| `superpozycja` | `1s+2p_z`, bicie gęstości |
+| `hel_plus` | He⁺, nadal jeden elektron |
+| `hel` / `wegiel` / `neon` / `sod` / `zelazo` | Slater, błąd IE w tabeli |
+
 ## Diagnostyka
 
 Silnik liczy na bieżąco energię (kinetyczną relatywistyczną i potencjalną), pęd, moment
@@ -256,6 +309,7 @@ cosmo/
     lcdm/        units, cosmology, power, ics, engine, presets
     sm/          particles, units, kinematics, forces, decays, spawn,
                  diagnostics, engine, presets
+    qm/          units, hydrogen, elements, plot, sample, engine, presets
     io/          binary, checkpoint, trajectory
     session.rs   wspólna pętla: krok, diagnostyka, zapis
     cli.rs       bieg wsadowy
@@ -266,6 +320,7 @@ cosmo/
 Modele `sr` i `lcdm` różnią się kinematyką i warunkami początkowymi, nie sposobem
 liczenia grawitacji — dlatego `mesh`, `grid`, `fft`, `vec3` i `rng` są wspólne.
 `sm` bierze z tego kinematykę relatywistyczną i solver dalekozasięgowy: Coulomb
-to to samo równanie co grawitacja, z innym ładunkiem.
+to to samo równanie co grawitacja, z innym ładunkiem. `qm` nie liczy sił —
+chmura jest próbką `|ψ|²`, a czas jest fazą superpozycji.
 
 Strona z opisem i odnośnikiem do wydania leży w `www/` (statyczna, nic nie liczy).

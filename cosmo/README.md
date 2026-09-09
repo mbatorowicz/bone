@@ -1,6 +1,6 @@
 # Bone Cosmo
 
-Aplikacja desktopowa: trzy modele na jednym komputerze.
+Aplikacja desktopowa: cztery modele na jednym komputerze.
 
 - **ΛCDM (Planck 2018)** — próbka materii, Particle-Mesh z izolowanymi brzegami
   (Hockney), warunki Zel'dovicha, całkowanie po `ln a`.
@@ -8,6 +8,8 @@ Aplikacja desktopowa: trzy modele na jednym komputerze.
   opcjonalne chłodzenie.
 - **SM** — Model Standardowy jako klasyczny gaz cząstek elementarnych:
   cztery oddziaływania, rozpady, anihilacja. To nie jest QFT.
+- **QM** — atomy i orbitale. Wodór dokładny (Schrödinger), reszta Slater
+  z mierzonym błędem jonizacji. Chmura to `|ψ|²`.
 
 Liczy na tym komputerze (FFT + wgpu do okna). Nie używa Vercela.
 
@@ -24,6 +26,7 @@ i odtwarzanie klatek działają z tego samego katalogu (`runs/latest` domyślnie
 ```
 BoneCosmo lcdm --zestaw struktury --do runs/lss
 BoneCosmo sm   --zestaw plazma --do runs/plazma
+BoneCosmo qm   --zestaw superpozycja --do runs/atom
 BoneCosmo lcdm --wznow --do runs/lss
 BoneCosmo sr   --wznow --do runs/frag
 BoneCosmo sm   --wznow --do runs/plazma

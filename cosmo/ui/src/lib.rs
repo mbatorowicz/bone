@@ -5,7 +5,7 @@
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela, jedyne miejsce dotykające `egui`,
-//! - [`simulation`] — trzy modele pod jednym interfejsem,
+//! - [`simulation`] — cztery modele pod jednym interfejsem,
 //! - ten moduł — pętla klatek i decyzje: kiedy startować, kiedy liczyć.
 //!
 //! Ten podział jest warunkiem testowalności, nie porządkiem dla porządku: kamera,
@@ -14,6 +14,7 @@
 //! byłyby sprawdzalne wyłącznie okiem.
 
 pub mod camera;
+pub mod charts;
 pub mod panels;
 pub mod render;
 pub mod replay;
@@ -88,6 +89,7 @@ impl App {
                 }
                 Mode::Cosmological => Session::start_lcdm(self.setup.lcdm, out, record),
                 Mode::Particles => Session::start_sm(self.setup.sm.clone(), out, record),
+                Mode::Atoms => Session::start_qm(self.setup.qm.clone(), out, record),
             }
         }));
 
@@ -142,6 +144,7 @@ impl App {
         let live_sr = self.setup.sr.clone();
         let live_dlna = self.setup.lcdm.dlna;
         let live_sm = self.setup.sm.clone();
+        let live_qm = self.setup.qm.clone();
         let session = self
             .view
             .as_mut()
@@ -150,6 +153,7 @@ impl App {
         session.apply_runtime_sr(&live_sr);
         session.apply_runtime_lcdm(live_dlna);
         session.apply_runtime_sm(&live_sm);
+        session.apply_runtime_qm(&live_qm);
 
         let started = Instant::now();
         let outcome = session.advance(steps);
@@ -307,7 +311,7 @@ pub fn run() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([960.0, 640.0])
-            .with_title("Bone — N ciał i cząstki"),
+            .with_title("Bone — N ciał, cząstki i atomy"),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };

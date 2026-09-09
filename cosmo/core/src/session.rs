@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::grid::center_span;
 use crate::io::{checkpoint, trajectory};
 use crate::lcdm;
+use crate::qm;
 use crate::sm;
 use crate::sr;
 use crate::sr::diagnostics::Snapshot;
@@ -27,6 +28,7 @@ pub enum Run {
     Relativistic(Box<Relativistic>),
     Cosmological(Box<Cosmological>),
     Particles(Box<Particles>),
+    Atoms(Box<Atoms>),
 }
 
 pub struct Relativistic {
@@ -42,6 +44,12 @@ pub struct Cosmological {
 pub struct Particles {
     pub engine: sm::Engine,
     pub latest: Option<sm::Snapshot>,
+    iteration: u64,
+}
+
+pub struct Atoms {
+    pub engine: qm::Engine,
+    pub latest: Option<qm::Snapshot>,
     iteration: u64,
 }
 
@@ -272,6 +280,88 @@ impl Particles {
     }
 }
 
+impl Atoms {
+    fn start(cfg: qm::Config) -> Self {
+        let mut run = Self {
+            engine: qm::Engine::new(cfg),
+            latest: None,
+            iteration: 0,
+        };
+        run.latest = Some(run.engine.collect_diagnostics());
+        run
+    }
+
+    fn from_engine(engine: qm::Engine) -> Self {
+        let mut run = Self {
+            engine,
+            latest: None,
+            iteration: 0,
+        };
+        run.latest = Some(run.engine.collect_diagnostics());
+        run
+    }
+
+    fn advance(&mut self, steps: u32) -> Result<(), String> {
+        self.engine.advance(steps)?;
+        self.iteration += 1;
+        let every = self.engine.cfg.run.diagnostics_every.max(1) as u64;
+        if self.iteration.is_multiple_of(every) || self.latest.is_none() {
+            self.latest = Some(self.engine.collect_diagnostics());
+        }
+        Ok(())
+    }
+
+    fn rows(&self) -> Vec<(&'static str, String)> {
+        let Some(s) = self.latest.as_ref() else {
+            return Vec::new();
+        };
+        let mut rows = vec![
+            ("czas [j.a.]", format!("{:>10.3}", s.time)),
+            ("czas [fs]", format!("{:>10.3}", s.time_fs())),
+            ("krok", format!("{:>10}", s.step)),
+            ("próbek", format!("{:>10}", s.n)),
+            ("E [eV]", format!("{:>10.3}", s.energy_ev)),
+            ("⟨r⟩ [a₀]", format!("{:>10.3}", s.mean_r)),
+            ("⟨r⟩ próbki", format!("{:>10.3}", s.sample_mean_r)),
+            ("r_Bohr [a₀]", format!("{:>10.3}", s.bohr_r)),
+        ];
+        if let Some(ie) = s.ionization_ev {
+            rows.push(("IE model [eV]", format!("{:>10.3}", ie)));
+        }
+        if let Some(ie) = s.ionization_exp_ev {
+            rows.push(("IE NIST [eV]", format!("{:>10.3}", ie)));
+        }
+        if let Some(err) = s.ionization_error {
+            rows.push(("błąd IE", format!("{:>+9.1}%", 100.0 * err)));
+        }
+        if let Some(t) = s.beat_period {
+            rows.push(("okres bicia [j.a.]", format!("{:>10.3}", t)));
+        }
+        rows.push((
+            "opis",
+            if s.exact {
+                "dokładny Schrödinger".into()
+            } else {
+                "Slater Z_eff".into()
+            },
+        ));
+        rows
+    }
+
+    fn headline(&self) -> String {
+        let mut text = format!(
+            "t={:.3} j.a.  krok={}  {}",
+            self.engine.state.time,
+            self.engine.state.step,
+            self.engine.describe()
+        );
+        if let Some(hint) = self.engine.accuracy_hint() {
+            text.push_str(&format!("  ⚠ {hint}"));
+        }
+        text
+    }
+}
+
 impl Session {
     pub fn start_sr(cfg: sr::Config, out_dir: PathBuf, record: bool) -> Result<Self, String> {
         let stride = cfg.run.point_stride;
@@ -287,6 +377,12 @@ impl Session {
     pub fn start_sm(cfg: sm::Config, out_dir: PathBuf, record: bool) -> Result<Self, String> {
         let stride = cfg.run.point_stride;
         let run = Run::Particles(Box::new(Particles::start(cfg)));
+        Self::assemble(run, out_dir, record, stride)
+    }
+
+    pub fn start_qm(cfg: qm::Config, out_dir: PathBuf, record: bool) -> Result<Self, String> {
+        let stride = cfg.run.point_stride;
+        let run = Run::Atoms(Box::new(Atoms::start(cfg)));
         Self::assemble(run, out_dir, record, stride)
     }
 
@@ -321,6 +417,15 @@ impl Session {
                 ))));
                 Self::assemble(run, out_dir, record, stride)
             }
+            checkpoint::Kind::Atoms => {
+                let (state, cfg) = checkpoint::load_qm(&out_dir)
+                    .map_err(|e| format!("wznowienie z {}: {e}", out_dir.display()))?;
+                let stride = cfg.run.point_stride;
+                let run = Run::Atoms(Box::new(Atoms::from_engine(qm::Engine::with_state(
+                    cfg, state,
+                ))));
+                Self::assemble(run, out_dir, record, stride)
+            }
         }
     }
 
@@ -350,6 +455,7 @@ impl Session {
             Run::Relativistic(run) => run.advance(steps)?,
             Run::Cosmological(run) => run.advance(steps)?,
             Run::Particles(run) => run.advance(steps)?,
+            Run::Atoms(run) => run.advance(steps)?,
         }
         self.maybe_record()?;
         Ok(Report {
@@ -398,6 +504,17 @@ impl Session {
                     .push(state.time, &state.positions, |i| run.engine.shade(i))
                     .map_err(|e| format!("zapis klatki: {e}"))
             }
+            Run::Atoms(run) => {
+                let every = run.engine.cfg.run.trajectory_every.max(1) as u64;
+                let step = run.engine.state.step;
+                if step == 0 || !step.is_multiple_of(every) {
+                    return Ok(());
+                }
+                let state = &run.engine.state;
+                recorder
+                    .push(state.time, &state.positions, |i| run.engine.shade(i))
+                    .map_err(|e| format!("zapis klatki: {e}"))
+            }
         }
     }
 
@@ -407,7 +524,12 @@ impl Session {
                 checkpoint::save(&run.engine.state, &run.engine.cfg, &self.out_dir)
             }
             Run::Cosmological(run) => checkpoint::save_lcdm(&run.engine, &self.out_dir),
-            Run::Particles(run) => checkpoint::save_sm(&run.engine.state, &run.engine.cfg, &self.out_dir),
+            Run::Particles(run) => {
+                checkpoint::save_sm(&run.engine.state, &run.engine.cfg, &self.out_dir)
+            }
+            Run::Atoms(run) => {
+                checkpoint::save_qm(&run.engine.state, &run.engine.cfg, &self.out_dir)
+            }
         }
     }
 
@@ -423,7 +545,7 @@ impl Session {
 
     pub fn finished(&self) -> bool {
         match &self.run {
-            Run::Relativistic(_) | Run::Particles(_) => false,
+            Run::Relativistic(_) | Run::Particles(_) | Run::Atoms(_) => false,
             Run::Cosmological(run) => run.engine.finished(),
         }
     }
@@ -433,6 +555,7 @@ impl Session {
             Run::Relativistic(run) => run.rows(),
             Run::Cosmological(run) => run.rows(),
             Run::Particles(run) => run.rows(),
+            Run::Atoms(run) => run.rows(),
         }
     }
 
@@ -441,6 +564,7 @@ impl Session {
             Run::Relativistic(run) => run.headline(),
             Run::Cosmological(run) => run.headline(),
             Run::Particles(run) => run.headline(),
+            Run::Atoms(run) => run.headline(),
         }
     }
 
@@ -449,6 +573,7 @@ impl Session {
             Run::Relativistic(run) => run.engine.take_warnings(),
             Run::Cosmological(_) => Vec::new(),
             Run::Particles(run) => run.engine.take_warnings(),
+            Run::Atoms(run) => run.engine.take_warnings(),
         }
     }
 
@@ -470,17 +595,30 @@ impl Session {
         }
     }
 
+    pub fn apply_runtime_qm(&mut self, live: &qm::Config) {
+        if let Run::Atoms(run) = &mut self.run {
+            run.engine.apply_runtime_config(live);
+        }
+    }
+
     pub fn sr_snapshot(&self) -> Option<&Snapshot> {
         match &self.run {
             Run::Relativistic(run) => run.latest.as_ref(),
-            Run::Cosmological(_) | Run::Particles(_) => None,
+            Run::Cosmological(_) | Run::Particles(_) | Run::Atoms(_) => None,
         }
     }
 
     pub fn sm_snapshot(&self) -> Option<&sm::Snapshot> {
         match &self.run {
             Run::Particles(run) => run.latest.as_ref(),
-            Run::Relativistic(_) | Run::Cosmological(_) => None,
+            Run::Relativistic(_) | Run::Cosmological(_) | Run::Atoms(_) => None,
+        }
+    }
+
+    pub fn qm_snapshot(&self) -> Option<&qm::Snapshot> {
+        match &self.run {
+            Run::Atoms(run) => run.latest.as_ref(),
+            Run::Relativistic(_) | Run::Cosmological(_) | Run::Particles(_) => None,
         }
     }
 
@@ -489,13 +627,14 @@ impl Session {
             Run::Relativistic(run) => run.engine.accuracy_hint(),
             Run::Cosmological(_) => None,
             Run::Particles(run) => run.engine.accuracy_hint(),
+            Run::Atoms(run) => run.engine.accuracy_hint(),
         }
     }
 
     pub fn should_check_error(&self) -> bool {
         match &self.run {
             Run::Relativistic(run) => run.engine.should_check_error(run.iteration),
-            Run::Cosmological(_) | Run::Particles(_) => false,
+            Run::Cosmological(_) | Run::Particles(_) | Run::Atoms(_) => false,
         }
     }
 
@@ -505,6 +644,10 @@ impl Session {
 
     pub fn is_particles(&self) -> bool {
         matches!(self.run, Run::Particles(_))
+    }
+
+    pub fn is_atoms(&self) -> bool {
+        matches!(self.run, Run::Atoms(_))
     }
 
     pub fn lcdm_log_values(&self) -> Option<(u64, f64, f64, f64, f64, f64)> {
@@ -520,7 +663,7 @@ impl Session {
                     run.engine.layzer_irvine(),
                 ))
             }
-            Run::Relativistic(_) | Run::Particles(_) => None,
+            Run::Relativistic(_) | Run::Particles(_) | Run::Atoms(_) => None,
         }
     }
 
@@ -529,6 +672,7 @@ impl Session {
             Run::Relativistic(run) => run.engine.state.n(),
             Run::Cosmological(run) => run.engine.n(),
             Run::Particles(run) => run.engine.state.n(),
+            Run::Atoms(run) => run.engine.state.n(),
         }
     }
 
@@ -537,6 +681,7 @@ impl Session {
             Run::Relativistic(run) => run.engine.state.positions[index],
             Run::Cosmological(run) => run.engine.positions[index],
             Run::Particles(run) => run.engine.state.positions[index],
+            Run::Atoms(run) => run.engine.state.positions[index],
         }
     }
 
@@ -548,6 +693,7 @@ impl Session {
                 .speed_over_c(index, run.engine.cfg.physics.c) as f32,
             Run::Cosmological(run) => run.engine.shade(index),
             Run::Particles(run) => run.engine.shade(index),
+            Run::Atoms(run) => run.engine.shade(index),
         }
     }
 
@@ -556,6 +702,7 @@ impl Session {
             Run::Relativistic(run) => center_span(&run.engine.state.positions),
             Run::Cosmological(run) => run.engine.center_span(),
             Run::Particles(run) => center_span(&run.engine.state.positions),
+            Run::Atoms(run) => center_span(&run.engine.state.positions),
         }
     }
 
@@ -572,6 +719,7 @@ impl Session {
             Run::Relativistic(run) => run.engine.cfg.run.diagnostics_every.max(1) as u64,
             Run::Cosmological(_) => LCDM_TRAJECTORY_EVERY,
             Run::Particles(run) => run.engine.cfg.run.diagnostics_every.max(1) as u64,
+            Run::Atoms(run) => run.engine.cfg.run.diagnostics_every.max(1) as u64,
         }
     }
 }
@@ -599,6 +747,15 @@ mod tests {
 
     fn small_sm() -> sm::Config {
         let mut cfg = sm::presets::para();
+        cfg.run.diagnostics_every = 1;
+        cfg.run.trajectory_every = 1;
+        cfg
+    }
+
+    fn small_qm() -> qm::Config {
+        let mut cfg = qm::presets::wodor();
+        cfg.run.n_samples = 400;
+        cfg.run.sparkle = false;
         cfg.run.diagnostics_every = 1;
         cfg.run.trajectory_every = 1;
         cfg
@@ -634,6 +791,13 @@ mod tests {
         assert!(sm.headline().contains("krok"));
         assert!(sm.is_particles());
         assert_eq!(sm.n(), 2);
+
+        let mut qm = Session::start_qm(small_qm(), temp_dir("qm-adv"), false).unwrap();
+        qm.advance(2).unwrap();
+        assert!(!qm.rows().is_empty());
+        assert!(qm.headline().contains("krok"));
+        assert!(qm.is_atoms());
+        assert_eq!(qm.n(), 400);
     }
 
     #[test]
@@ -672,6 +836,19 @@ mod tests {
         let resumed = Session::resume(dir.clone(), false).unwrap();
         assert!(resumed.is_particles());
         assert_eq!(resumed.sm_snapshot().unwrap().step, step);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn qm_session_round_trips_through_checkpoint() {
+        let dir = temp_dir("qm-resume");
+        let mut session = Session::start_qm(small_qm(), dir.clone(), false).unwrap();
+        session.advance(3).unwrap();
+        let step = session.qm_snapshot().unwrap().step;
+        session.save_checkpoint().unwrap();
+        let resumed = Session::resume(dir.clone(), false).unwrap();
+        assert!(resumed.is_atoms());
+        assert_eq!(resumed.qm_snapshot().unwrap().step, step);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

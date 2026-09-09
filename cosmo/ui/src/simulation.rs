@@ -1,4 +1,4 @@
-//! Trzy modele i odtwarzanie pod jednym interfejsem panelu i renderera.
+//! Cztery modele i odtwarzanie pod jednym interfejsem panelu i renderera.
 
 use bone_core::session::Session;
 use crate::render::PointCloud;
@@ -13,16 +13,24 @@ pub enum Mode {
     Cosmological,
     /// Klasyczny gaz cząstek Modelu Standardowego.
     Particles,
+    /// Atomy i orbitale: Schrödinger (wodoropodobne) albo Slater (wieloelektronowe).
+    Atoms,
 }
 
 impl Mode {
-    pub const ALL: [Mode; 3] = [Mode::Relativistic, Mode::Cosmological, Mode::Particles];
+    pub const ALL: [Mode; 4] = [
+        Mode::Relativistic,
+        Mode::Cosmological,
+        Mode::Particles,
+        Mode::Atoms,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Relativistic => "chmura SR",
             Self::Cosmological => "ΛCDM",
             Self::Particles => "cząstki SM",
+            Self::Atoms => "atomy QM",
         }
     }
 
@@ -31,6 +39,7 @@ impl Mode {
             Self::Relativistic => "grawitacja newtonowska, kinematyka SR — układ izolowany",
             Self::Cosmological => "ΛCDM · Planck 2018 · PM izolowany (Hockney)",
             Self::Particles => "Model Standardowy · klasyczne trajektorie · 4 oddziaływania",
+            Self::Atoms => "orbitale · |ψ|² · wodór dokładny, reszta Slater",
         }
     }
 }
@@ -129,6 +138,7 @@ impl PointCloud for Replay {
 mod tests {
     use super::*;
     use bone_core::lcdm;
+    use bone_core::qm;
     use bone_core::sm;
     use bone_core::sr;
     use std::path::PathBuf;
@@ -150,6 +160,13 @@ mod tests {
 
     fn small_sm() -> sm::Config {
         sm::presets::para()
+    }
+
+    fn small_qm() -> qm::Config {
+        let mut cfg = qm::presets::wodor();
+        cfg.run.n_samples = 400;
+        cfg.run.sparkle = false;
+        cfg
     }
 
     fn scratch(tag: &str) -> PathBuf {
@@ -200,6 +217,16 @@ mod tests {
     }
 
     #[test]
+    fn atoms_view_reports_energy() {
+        let mut view = View::Live(
+            Session::start_qm(small_qm(), scratch("qm"), false).unwrap(),
+        );
+        view.as_live_mut().unwrap().advance(2).unwrap();
+        assert!(view.headline().contains("krok"));
+        assert_eq!(view.cloud().len(), 400);
+    }
+
+    #[test]
     fn live_galaxy_paints_visible_pixels() {
         use crate::camera::Camera;
         use crate::render::render;
@@ -237,6 +264,11 @@ mod tests {
         for i in 0..sm.len() {
             let s = PointCloud::shade(&sm, i);
             assert!((0.0..=1.0).contains(&s), "SM: cząstka {i} ma odcień {s}");
+        }
+        let qm = Session::start_qm(small_qm(), scratch("shade-qm"), false).unwrap();
+        for i in 0..qm.len() {
+            let s = PointCloud::shade(&qm, i);
+            assert!((0.0..=1.0).contains(&s), "QM: punkt {i} ma odcień {s}");
         }
     }
 }

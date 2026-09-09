@@ -8,11 +8,16 @@
 use eframe::egui::{self, Color32, RichText, Ui};
 
 use bone_core::lcdm;
+use bone_core::qm;
+use bone_core::qm::config::Scene;
+use bone_core::qm::elements;
+use bone_core::qm::hydrogen::{orbital_label, spectroscopic};
 use bone_core::sm;
 use bone_core::sm::config::Shape;
 use bone_core::sr;
 use bone_core::sr::config::{BackendKind, Geometry};
 use bone_core::io::checkpoint;
+use crate::charts;
 use crate::simulation::{Mode, View};
 
 /// Nastawy formularza — to, co widzi użytkownik, zanim wciśnie „Uruchom".
@@ -24,6 +29,8 @@ pub struct Setup {
     pub lcdm_preset: lcdm::Preset,
     pub sm: sm::Config,
     pub sm_preset: &'static str,
+    pub qm: qm::Config,
+    pub qm_preset: &'static str,
     /// Ile kroków symulacji na jedną klatkę; 0 znaczy „jeszcze wolniej".
     pub speed: u32,
     pub out_dir: String,
@@ -40,6 +47,8 @@ impl Default for Setup {
             lcdm_preset: lcdm::Preset::Structure,
             sm: sm::presets::plazma(),
             sm_preset: "plazma",
+            qm: qm::presets::wodor(),
+            qm_preset: "wodor",
             speed: 1,
             out_dir: "runs/latest".to_string(),
             record: false,
@@ -90,6 +99,7 @@ pub fn side_panel(
         Mode::Relativistic => relativistic_form(ui, setup),
         Mode::Cosmological => cosmological_form(ui, setup),
         Mode::Particles => particles_form(ui, setup),
+        Mode::Atoms => atoms_form(ui, setup),
     }
 
     ui.add(
@@ -363,6 +373,142 @@ fn particles_form(ui: &mut Ui, setup: &mut Setup) {
     );
 }
 
+fn atoms_form(ui: &mut Ui, setup: &mut Setup) {
+    ui.label("Zestaw nastaw");
+    ui.horizontal_wrapped(|ui| {
+        for preset in qm::presets::PRESETS {
+            if ui
+                .selectable_label(setup.qm_preset == preset.id, preset.id)
+                .clicked()
+            {
+                setup.qm = (preset.build)();
+                setup.qm_preset = preset.id;
+            }
+        }
+    });
+    ui.add_space(6.0);
+
+    ui.horizontal_wrapped(|ui| {
+        let z = setup.qm.scene.z();
+        if ui
+            .selectable_label(matches!(setup.qm.scene, Scene::Orbital { .. }), "orbital")
+            .clicked()
+        {
+            let (_, n, l, m) = setup.qm.scene.primary_orbital();
+            setup.qm.scene = Scene::Orbital { z, n, l, m };
+        }
+        if ui
+            .selectable_label(matches!(setup.qm.scene, Scene::Atom { .. }), "atom")
+            .clicked()
+        {
+            setup.qm.scene = Scene::Atom { z };
+        }
+        if ui
+            .selectable_label(
+                matches!(setup.qm.scene, Scene::Superposition { .. }),
+                "superpozycja",
+            )
+            .clicked()
+        {
+            setup.qm.scene = Scene::Superposition {
+                z,
+                terms: vec![
+                    qm::Term::real(1, 0, 0, 1.0),
+                    qm::Term::real(2, 1, 0, 1.0),
+                ],
+            };
+        }
+    });
+
+    match &mut setup.qm.scene {
+        Scene::Orbital { z, n, l, m } => {
+            ui.add(egui::Slider::new(z, 1..=18).text("Z jądra"));
+            ui.add(egui::Slider::new(n, 1..=8).text("n"));
+            let n_now = *n;
+            if *l >= n_now {
+                *l = n_now.saturating_sub(1);
+            }
+            ui.add(egui::Slider::new(l, 0..=n_now.saturating_sub(1)).text("l"));
+            let cap = *l as i32;
+            *m = (*m).clamp(-cap, cap);
+            ui.add(egui::Slider::new(m, -cap..=cap).text("m"));
+            ui.label(
+                RichText::new(format!(
+                    "{}  ·  l={} ({})  ·  dokładny Schrödinger",
+                    orbital_label(*n, *l, *m),
+                    l,
+                    spectroscopic(*l)
+                ))
+                .small()
+                .weak(),
+            );
+        }
+        Scene::Atom { z } => {
+            ui.label("Pierwiastek");
+            ui.horizontal_wrapped(|ui| {
+                for el in elements::TABLE {
+                    if ui.selectable_label(*z == el.z, el.symbol).clicked() {
+                        *z = el.z;
+                    }
+                }
+            });
+            let el = elements::nearest(*z);
+            ui.label(
+                RichText::new(format!(
+                    "{}  Z={}  {}  ·  IE NIST {:.2} eV",
+                    el.name,
+                    el.z,
+                    el.configuration_text(),
+                    el.ionization_ev
+                ))
+                .small()
+                .weak(),
+            );
+        }
+        Scene::Superposition { z, terms } => {
+            ui.add(egui::Slider::new(z, 1..=8).text("Z jądra"));
+            if terms.len() >= 2 {
+                let text = format!(
+                    "{} + {}  ·  gęstość bije, gdy n się różnią",
+                    terms[0].label(),
+                    terms[1].label()
+                );
+                ui.label(RichText::new(text).small().weak());
+            }
+        }
+    }
+
+    if matches!(setup.qm.scene, Scene::Superposition { .. }) {
+        let mut mix = setup.qm.mix();
+        if ui
+            .add(egui::Slider::new(&mut mix, 0.0..=1.0).text("mieszanka 2. stanu"))
+            .changed()
+        {
+            setup.qm.set_mix(mix);
+        }
+    }
+
+    ui.add(
+        egui::Slider::new(&mut setup.qm.run.n_samples, 500..=80_000)
+            .logarithmic(true)
+            .text("próbek |ψ|²"),
+    );
+    ui.checkbox(&mut setup.qm.run.sparkle, "iskrzenie chmury");
+
+    ui.label(
+        RichText::new(
+            "Chmura to próbka prawdopodobieństwa, nie elektrony. Wodór i He⁺ są \
+             dokładne. C, Ne, Fe: niezależne elektrony z Z_eff Slatera — błąd IE \
+             stoi w tabeli. Jasność: znak ψ (orbital) albo powłoka n (atom).",
+        )
+        .small()
+        .weak(),
+    );
+
+    let charts = qm::plot::from_config(&setup.qm);
+    charts::atom_charts(ui, &charts);
+}
+
 fn mixture_text(cfg: &sm::Config) -> String {
     let parts: Vec<String> = cfg
         .spawn
@@ -390,6 +536,7 @@ fn setup_summary(setup: &Setup) -> String {
             setup.sr.physics.c
         ),
         Mode::Particles => mixture_text(&setup.sm),
+        Mode::Atoms => setup.qm.scene.label(),
         Mode::Cosmological => {
             let c = lcdm::Cosmology::planck18();
             format!(
@@ -421,6 +568,8 @@ mod tests {
         assert!(sr::presets::preset(setup.sr_preset).is_some());
         assert!(setup.sm.spawn.total_count() > 0);
         assert!(sm::presets::preset(setup.sm_preset).is_some());
+        assert!(qm::presets::preset(setup.qm_preset).is_some());
+        assert!(setup.qm.run.n_samples > 0);
     }
 
     #[test]

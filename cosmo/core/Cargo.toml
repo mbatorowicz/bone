@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Fizyka N-ciał Bone: SR, ΛCDM, Model Standardowy, solver PM, I/O i bieg wsadowy"
+description = "Fizyka Bone: SR, ΛCDM, Model Standardowy, atomy QM, solver PM, I/O i bieg wsadowy"
 
 [lib]
 name = "bone_core"
