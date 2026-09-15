@@ -4,6 +4,7 @@
 //! tyle, ile stuby i późniejsze teksty kursu naprawdę użyją. Nieznany znacznik
 //! spada do akapitu zamiast wywalić okno. Układ 60/40 i play/pauza są wspólne.
 //! STW 1–6 rysuje [`crate::viz`]; lekcja 7 otwiera laboratorium N-ciał.
+//! Geodezyjna 1–5 też: kula, siatka z suwakiem M, film RK4 vs Euler.
 
 use std::f32::consts::TAU;
 
@@ -26,15 +27,17 @@ pub enum Action {
     Lab(LabId),
 }
 
-/// Play/pauza, faza pętli i β suwaka Minkowskiego.
+/// Play/pauza, faza pętli, β Minkowskiego, masa Schwarzschilda i obrót kuli.
 ///
 /// Reset przy zmianie lekcji, żeby obraz nie skakał ze środka poprzedniej
-/// strony, a γ wracało do podręcznikowego 5/4.
+/// strony, a γ wracało do podręcznikowego 5/4 i M do jedynki z testów metryki.
 #[derive(Clone, Copy, Debug)]
 pub struct Playback {
     pub playing: bool,
     pub t: f32,
     pub beta: f64,
+    pub mass: f64,
+    pub spin: f32,
 }
 
 impl Default for Playback {
@@ -43,6 +46,8 @@ impl Default for Playback {
             playing: true,
             t: 0.0,
             beta: crate::viz::BETA_DEFAULT,
+            mass: crate::viz::MASS_DEFAULT,
+            spin: crate::viz::SPIN_DEFAULT,
         }
     }
 }
@@ -553,6 +558,8 @@ let x = 1;
         assert!(p.playing);
         assert_eq!(p.t, 0.0);
         assert_eq!(p.beta, crate::viz::BETA_DEFAULT);
+        assert_eq!(p.mass, crate::viz::MASS_DEFAULT);
+        assert_eq!(p.spin, crate::viz::SPIN_DEFAULT);
         assert!((crate::viz::minkowski::gamma_of(p.beta) - 1.25).abs() < 1e-15);
     }
 

@@ -3,9 +3,14 @@
 //! Fizyka nie mieszka tu. Ten katalog składa znaczniki z [`bone_core::gr::lorentz`]
 //! w diagram, który da się ruszyć suwakiem. Minkowski to lekcje STW 1–3;
 //! zegary, linijka i 4-wektor to 4–6; lekcja 7 otwiera laboratorium N-ciał.
+//! Ścieżka geodezyjna 1–5: kula, gumowa siatka, film RK4 vs Euler.
+//! Laboratorium zrzucania jeszcze tu nie wchodzi.
 
 pub mod clocks;
+pub mod metric_grid;
 pub mod minkowski;
+pub mod rk4_film;
+pub mod sphere;
 
 use eframe::egui::Ui;
 
@@ -16,6 +21,12 @@ use crate::screen::{LabId, LessonId, Track};
 pub const BETA_DEFAULT: f64 = 0.6;
 /// Suwak nie dochodzi do 1 — transformacja Lorentza wtedy nie istnieje.
 pub const BETA_MAX: f64 = 0.95;
+/// Domyślne M: te same 2M / 3M / 6M co testy [`bone_core::gr::metric`].
+pub const MASS_DEFAULT: f64 = 1.0;
+/// Suwak masy zostawia zapas, żeby 6M mieściło się na siatce o zasięgu 16.
+pub const MASS_MAX: f64 = 2.5;
+/// Startowy obrót globusa: widać oba ślady, nie sam biegun.
+pub const SPIN_DEFAULT: f32 = 0.85;
 
 /// Co obraz lekcji zrobił z klatką.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +53,18 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
             } else {
                 Outcome::Drawn
             }
+        }
+        (Track::Geo, 1) => {
+            sphere::draw(ui, playback);
+            Outcome::Drawn
+        }
+        (Track::Geo, 2..=4) => {
+            metric_grid::draw(ui, id.index, playback);
+            Outcome::Drawn
+        }
+        (Track::Geo, 5) => {
+            rk4_film::draw(ui, playback);
+            Outcome::Drawn
         }
         _ => Outcome::Placeholder,
     }

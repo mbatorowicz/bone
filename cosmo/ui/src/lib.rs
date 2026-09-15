@@ -4,7 +4,7 @@
 //!
 //! - [`screen`] — mapa, identyfikatory ścieżek i labów,
 //! - [`lesson`] — ekran 60/40, parser Markdown, play/pauza,
-//! - [`viz`] — ruchomy obraz lekcji (Minkowski STW 1–3, zegary 4–6, drzwi do N-ciał),
+//! - [`viz`] — ruchomy obraz lekcji (STW 1–7, geodezyjna 1–5; zrzucanie to osobny krok),
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela laboratorium, jedyne miejsce formularza `egui`,

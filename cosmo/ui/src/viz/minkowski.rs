@@ -748,6 +748,7 @@ mod tests {
                     playing: false,
                     t: 1.2,
                     beta: crate::viz::BETA_DEFAULT,
+                    ..Default::default()
                 };
                 draw(ui, index, &mut playback);
                 assert!((gamma_of(playback.beta) - 1.25).abs() < 1e-15);
