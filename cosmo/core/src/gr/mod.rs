@@ -7,12 +7,14 @@
 //!
 //! [`rk4`] to stepper na wektorze stanu. [`metric`] to Schwarzschild jako
 //! `g_μν` i trzy promienie `2M` / `3M` / `6M`. [`christoffel`] to analityczne
-//! Γ, [`geodesic`] składa je z RK4 w tor `(t, r, θ, φ)`.
+//! Γ, [`geodesic`] składa je z RK4 w tor `(t, r, θ, φ)`. [`raytrace`] to
+//! obraz: piksel = geodezyjna zerowa wstecz, bez okna.
 
 pub mod christoffel;
 pub mod geodesic;
 pub mod lorentz;
 pub mod metric;
+pub mod raytrace;
 pub mod rk4;
 
 pub use christoffel::Christoffel;
@@ -22,3 +24,4 @@ pub use lorentz::{
     gamma_from_beta, Event, Superluminal,
 };
 pub use metric::{horizon_radius, isco_radius, photon_sphere_radius, MetricError, Schwarzschild};
+pub use raytrace::{Buffer, Hit, RaytraceError};
