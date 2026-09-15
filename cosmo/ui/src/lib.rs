@@ -4,7 +4,7 @@
 //!
 //! - [`screen`] — mapa, identyfikatory ścieżek i labów,
 //! - [`lesson`] — ekran 60/40, parser Markdown, play/pauza,
-//! - [`viz`] — ruchomy obraz lekcji (Minkowski STW 1–3; później zegary i siatka),
+//! - [`viz`] — ruchomy obraz lekcji (Minkowski STW 1–3, zegary 4–6, drzwi do N-ciał),
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela laboratorium, jedyne miejsce formularza `egui`,
@@ -227,6 +227,17 @@ impl App {
         self.screen = Screen::Lab(lab);
     }
 
+    /// Lekcja STW 7: preset relatywistyczny, kinematyka SR, karta „to nie OTW”.
+    fn open_course_lab(&mut self, lab: LabId) {
+        if lab == LabId::Nbody {
+            if self.view.is_some() {
+                self.stop();
+            }
+            self.setup.apply_stw_nbody_door();
+        }
+        self.open_lab(lab);
+    }
+
     fn open_lesson(&mut self, id: LessonId) {
         self.running = false;
         self.lesson.reset();
@@ -381,6 +392,7 @@ impl eframe::App for App {
                 match action {
                     lesson::Action::Map => self.back_to_map(),
                     lesson::Action::Lesson(next) => self.open_lesson(next),
+                    lesson::Action::Lab(lab) => self.open_course_lab(lab),
                     lesson::Action::None => {}
                 }
             }
@@ -485,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn a_path_opens_a_lesson_and_stw_walks_back_to_the_map() {
+    fn a_path_opens_a_lesson_and_stw_walks_into_nbody() {
         let mut app = App::default();
         let mut id = screen::Track::Stw.first();
         app.open_lesson(id);
@@ -499,9 +511,22 @@ mod tests {
         }
         assert_eq!(hops, 6);
         assert_eq!(id.index, 7);
-        assert_eq!(lesson::step(id, true), lesson::Action::Map);
+        assert_eq!(lesson::step(id, true), lesson::Action::Lab(LabId::Nbody));
+        app.open_course_lab(LabId::Nbody);
+        assert_eq!(app.screen, Screen::Lab(LabId::Nbody));
+        assert_eq!(app.setup.mode, Mode::Relativistic);
+        assert_eq!(app.setup.sr_preset, "relativistic");
+        assert_eq!(
+            app.setup.sr.physics.kinematics,
+            bone_core::sr::relativity::Kinematics::Sr
+        );
+        assert_eq!(
+            crate::simulation::nbody_card(app.setup.sr.physics.kinematics).not_this,
+            crate::simulation::NBODY_NOT_GR
+        );
         app.back_to_map();
         assert_eq!(app.screen, Screen::Map);
+        assert!(!app.running);
     }
 
     #[test]

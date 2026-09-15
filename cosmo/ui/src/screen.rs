@@ -130,6 +130,14 @@ impl LessonId {
             index: self.index + 1,
         })
     }
+
+    /// Ostatnia lekcja ścieżki A otwiera chmurę, nie wraca na mapę.
+    pub fn opens_lab(self) -> Option<LabId> {
+        match (self.track, self.index) {
+            (Track::Stw, 7) => Some(LabId::Nbody),
+            _ => None,
+        }
+    }
 }
 
 /// Istniejące laboratoria. Geodezyjne i raytracer dojdą, gdy będzie silnik.
@@ -360,6 +368,16 @@ mod tests {
             .next(),
             None
         );
+        assert_eq!(
+            LessonId {
+                track: Track::Stw,
+                index: 7
+            }
+            .opens_lab(),
+            Some(LabId::Nbody)
+        );
+        assert_eq!(Track::Stw.first().opens_lab(), None);
+        assert_eq!(Track::Geo.lessons().last().unwrap().opens_lab(), None);
     }
 
     #[test]

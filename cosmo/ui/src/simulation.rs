@@ -77,6 +77,9 @@ impl Mode {
     }
 }
 
+/// Zdanie z lekcji STW 7: kinematyka może być Einsteina, siła nie.
+pub const NBODY_NOT_GR: &str = "siła nadal newtonowska — to nie OTW";
+
 /// Karta N-ciał zależy od przełącznika kinematyki — względność to nie kolor.
 pub fn nbody_card(kinematics: Kinematics) -> ModelCard {
     match kinematics {
@@ -84,13 +87,13 @@ pub fn nbody_card(kinematics: Kinematics) -> ModelCard {
             equation: "v = p/m, E = p²/2m",
             scope: "izolowana chmura · siła Newtona (Plummer)",
             comparison: "wiriał, dryf E · |v| może przekroczyć c",
-            not_this: "nie OTW, nie 1PN, nie fale grawitacyjne",
+            not_this: NBODY_NOT_GR,
         },
         Kinematics::Sr => ModelCard {
             equation: "p = γmv, v = pc²/E",
             scope: "izolowana chmura · siła Newtona (Plummer)",
             comparison: "wiriał, dryf E · |v| < c z definicji",
-            not_this: "nie OTW, nie 1PN, nie fale grawitacyjne",
+            not_this: NBODY_NOT_GR,
         },
     }
 }
@@ -314,9 +317,11 @@ mod tests {
         let newton = nbody_card(Kinematics::Newton);
         assert!(newton.equation.contains("p/m"));
         assert!(newton.comparison.contains("przekroczyć c"));
+        assert_eq!(newton.not_this, NBODY_NOT_GR);
         let rel = nbody_card(Kinematics::Sr);
         assert!(rel.equation.contains("γmv"));
         assert!(rel.comparison.contains("|v| < c"));
+        assert_eq!(rel.not_this, NBODY_NOT_GR);
         let cosmo = Mode::Cosmological.card();
         assert!(cosmo.equation.contains("Planck 2018"));
         assert!(cosmo.scope.contains("periodyczne"));

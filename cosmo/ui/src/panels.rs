@@ -18,7 +18,7 @@ use bone_core::sr;
 use bone_core::sr::config::{BackendKind, Geometry, Kinematics};
 use bone_core::io::checkpoint;
 use crate::charts;
-use crate::simulation::{atoms_card, nbody_card, Mode, ModelCard, View};
+use crate::simulation::{atoms_card, nbody_card, Mode, ModelCard, View, NBODY_NOT_GR};
 
 /// Nastawy formularza — to, co widzi użytkownik, zanim wciśnie „Uruchom".
 pub struct Setup {
@@ -53,6 +53,15 @@ impl Default for Setup {
             out_dir: "runs/latest".to_string(),
             record: false,
         }
+    }
+}
+
+impl Setup {
+    /// Drzwi z lekcji STW 7: chmura relatywistyczna, kinematyka SR, siła Newtona.
+    pub fn apply_stw_nbody_door(&mut self) {
+        self.mode = Mode::Relativistic;
+        self.sr = sr::presets::relativistic();
+        self.sr_preset = "relativistic";
     }
 }
 
@@ -178,6 +187,14 @@ fn model_card(ui: &mut Ui, setup: &Setup) {
         mode => mode.card(),
     };
     ui.group(|ui| {
+        if setup.mode == Mode::Relativistic {
+            ui.label(
+                RichText::new(NBODY_NOT_GR)
+                    .italics()
+                    .color(Color32::from_rgb(200, 230, 170)),
+            );
+            ui.add_space(4.0);
+        }
         egui::Grid::new("model-card")
             .num_columns(2)
             .spacing([12.0, 2.0])
@@ -617,6 +634,19 @@ mod tests {
         assert!(sm::presets::preset(setup.sm_preset).is_some());
         assert!(qm::presets::preset(setup.qm_preset).is_some());
         assert!(setup.qm.run.n_samples > 0);
+    }
+
+    #[test]
+    fn stw_door_loads_the_relativistic_nbody_preset() {
+        let mut setup = Setup::default();
+        setup.apply_stw_nbody_door();
+        assert_eq!(setup.mode, Mode::Relativistic);
+        assert_eq!(setup.sr_preset, "relativistic");
+        assert_eq!(setup.sr.physics.kinematics, Kinematics::Sr);
+        assert_eq!(
+            nbody_card(setup.sr.physics.kinematics).not_this,
+            crate::simulation::NBODY_NOT_GR
+        );
     }
 
     #[test]

@@ -3,13 +3,13 @@
 //! Parser zna nagłówki, akapity, `> callout` i fenced code —
 //! tyle, ile stuby i późniejsze teksty kursu naprawdę użyją. Nieznany znacznik
 //! spada do akapitu zamiast wywalić okno. Układ 60/40 i play/pauza są wspólne.
-//! STW 1–3 rysuje [`crate::viz`]; reszta zostaje przy placeholdrze.
+//! STW 1–6 rysuje [`crate::viz`]; lekcja 7 otwiera laboratorium N-ciał.
 
 use std::f32::consts::TAU;
 
 use eframe::egui::{self, Color32, FontId, Pos2, Rect, RichText, Stroke, Ui};
 
-use crate::screen::{LessonId, Track};
+use crate::screen::{LabId, LessonId, Track};
 
 macro_rules! lesson_md {
     ($path:expr) => {
@@ -23,6 +23,7 @@ pub enum Action {
     None,
     Map,
     Lesson(LessonId),
+    Lab(LabId),
 }
 
 /// Play/pauza, faza pętli i β suwaka Minkowskiego.
@@ -59,10 +60,16 @@ impl Playback {
     }
 }
 
-/// Wstecz / Dalej po ścieżce. Brak sąsiada = powrót na mapę (A7 → mapa).
+/// Wstecz / Dalej po ścieżce. A7 otwiera N-ciała; brak sąsiada = mapa.
 pub fn step(id: LessonId, forward: bool) -> Action {
-    let neighbor = if forward { id.next() } else { id.prev() };
-    neighbor.map(Action::Lesson).unwrap_or(Action::Map)
+    if forward {
+        if let Some(lab) = id.opens_lab() {
+            return Action::Lab(lab);
+        }
+        id.next().map(Action::Lesson).unwrap_or(Action::Map)
+    } else {
+        id.prev().map(Action::Lesson).unwrap_or(Action::Map)
+    }
 }
 
 pub fn source(id: LessonId) -> &'static str {
@@ -192,8 +199,14 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Action {
             action = draw_text(ui, id);
         });
     egui::CentralPanel::default().show_inside(ui, |ui| {
-        if !crate::viz::draw(ui, id, playback) {
-            draw_placeholder(ui, playback);
+        match crate::viz::draw(ui, id, playback) {
+            crate::viz::Outcome::Placeholder => draw_placeholder(ui, playback),
+            crate::viz::Outcome::Drawn => {}
+            crate::viz::Outcome::OpenLab(lab) => {
+                if action == Action::None {
+                    action = Action::Lab(lab);
+                }
+            }
         }
     });
     action
@@ -215,7 +228,13 @@ fn draw_text(ui: &mut Ui, id: LessonId) -> Action {
                     action = step(id, false);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let forth = if id.next().is_some() { "Dalej" } else { "Mapa" };
+                    let forth = if id.next().is_some() {
+                        "Dalej"
+                    } else if id.opens_lab().is_some() {
+                        "Laboratorium N-ciała"
+                    } else {
+                        "Mapa"
+                    };
                     if ui.button(forth).clicked() {
                         action = step(id, true);
                     }
@@ -454,7 +473,7 @@ let x = 1;
     }
 
     #[test]
-    fn stw_next_walks_to_the_seventh_lesson_then_map() {
+    fn stw_next_walks_to_the_seventh_lesson_then_nbody() {
         let mut id = Track::Stw.first();
         let mut hops = 0;
         loop {
@@ -463,13 +482,17 @@ let x = 1;
                     id = next;
                     hops += 1;
                 }
-                Action::Map => break,
+                Action::Lab(lab) => {
+                    assert_eq!(lab, LabId::Nbody);
+                    break;
+                }
+                Action::Map => panic!("A7 miało otworzyć N-ciała, nie mapę"),
                 Action::None => panic!("krok nie może być pusty"),
             }
         }
         assert_eq!(hops, 6);
         assert_eq!(id.index, 7);
-        assert_eq!(step(id, true), Action::Map);
+        assert_eq!(step(id, true), Action::Lab(LabId::Nbody));
         assert_eq!(step(Track::Stw.first(), false), Action::Map);
     }
 
