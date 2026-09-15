@@ -5,6 +5,7 @@
 //! spada do akapitu zamiast wywalić okno. Układ 60/40 i play/pauza są wspólne.
 //! STW 1–6 rysuje [`crate::viz`]; lekcja 7 otwiera laboratorium N-ciał.
 //! Geodezyjna 1–5 też: kula, siatka z suwakiem M, film RK4 vs Euler.
+//! Lekcja 6 otwiera stół zrzucania.
 
 use std::f32::consts::TAU;
 
@@ -65,7 +66,7 @@ impl Playback {
     }
 }
 
-/// Wstecz / Dalej po ścieżce. A7 otwiera N-ciała; brak sąsiada = mapa.
+/// Wstecz / Dalej po ścieżce. A7 otwiera N-ciała; B6 — geodezyjne; brak sąsiada = mapa.
 pub fn step(id: LessonId, forward: bool) -> Action {
     if forward {
         if let Some(lab) = id.opens_lab() {
@@ -203,14 +204,12 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Action {
         .show_inside(ui, |ui| {
             action = draw_text(ui, id);
         });
-    egui::CentralPanel::default().show_inside(ui, |ui| {
-        match crate::viz::draw(ui, id, playback) {
-            crate::viz::Outcome::Placeholder => draw_placeholder(ui, playback),
-            crate::viz::Outcome::Drawn => {}
-            crate::viz::Outcome::OpenLab(lab) => {
-                if action == Action::None {
-                    action = Action::Lab(lab);
-                }
+    egui::CentralPanel::default().show_inside(ui, |ui| match crate::viz::draw(ui, id, playback) {
+        crate::viz::Outcome::Placeholder => draw_placeholder(ui, playback),
+        crate::viz::Outcome::Drawn => {}
+        crate::viz::Outcome::OpenLab(lab) => {
+            if action == Action::None {
+                action = Action::Lab(lab);
             }
         }
     });
@@ -235,8 +234,8 @@ fn draw_text(ui: &mut Ui, id: LessonId) -> Action {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let forth = if id.next().is_some() {
                         "Dalej"
-                    } else if id.opens_lab().is_some() {
-                        "Laboratorium N-ciała"
+                    } else if let Some(lab) = id.opens_lab() {
+                        lab.course_button()
                     } else {
                         "Mapa"
                     };
@@ -507,7 +506,8 @@ let x = 1;
                 .filter(|b| matches!(b, Block::Code { .. }))
                 .count();
             assert_eq!(
-                n_code, 1,
+                n_code,
+                1,
                 "{}: oczekiwany jeden wzór, jest {n_code}",
                 id.slug()
             );
@@ -542,6 +542,30 @@ let x = 1;
         assert_eq!(id.index, 7);
         assert_eq!(step(id, true), Action::Lab(LabId::Nbody));
         assert_eq!(step(Track::Stw.first(), false), Action::Map);
+    }
+
+    #[test]
+    fn geo_next_walks_to_the_sixth_lesson_then_geodesics() {
+        let mut id = Track::Geo.first();
+        let mut hops = 0;
+        loop {
+            match step(id, true) {
+                Action::Lesson(next) => {
+                    id = next;
+                    hops += 1;
+                }
+                Action::Lab(lab) => {
+                    assert_eq!(lab, LabId::Geodesics);
+                    break;
+                }
+                Action::Map => panic!("B6 miało otworzyć geodezyjne, nie mapę"),
+                Action::None => panic!("krok nie może być pusty"),
+            }
+        }
+        assert_eq!(hops, 5);
+        assert_eq!(id.index, 6);
+        assert_eq!(step(id, true), Action::Lab(LabId::Geodesics));
+        assert_eq!(step(Track::Geo.first(), false), Action::Map);
     }
 
     #[test]

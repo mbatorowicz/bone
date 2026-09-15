@@ -4,7 +4,7 @@
 //!
 //! - [`screen`] — mapa, identyfikatory ścieżek i labów,
 //! - [`lesson`] — ekran 60/40, parser Markdown, play/pauza,
-//! - [`viz`] — ruchomy obraz lekcji (STW 1–7, geodezyjna 1–5; zrzucanie to osobny krok),
+//! - [`viz`] — ruchomy obraz lekcji (STW 1–7, geodezyjna 1–6; zrzucanie to osobny lab),
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela laboratorium, jedyne miejsce formularza `egui`,
@@ -36,6 +36,7 @@ use crate::panels::{Action, Setup};
 use crate::replay::Replay;
 use crate::screen::{LabId, LessonId, Nav, Screen};
 use crate::simulation::{Mode, View};
+use crate::viz::geodesics;
 use bone_core::session::Session;
 
 /// Ile klatek odczekać na najniższym ustawieniu szybkości.
@@ -48,6 +49,7 @@ const SLOW_HOLD_FRAMES: u32 = 8;
 pub struct App {
     screen: Screen,
     lesson: Playback,
+    geo_lab: geodesics::Lab,
     setup: Setup,
     view: Option<View>,
     running: bool,
@@ -65,6 +67,7 @@ impl Default for App {
         Self {
             screen: Screen::Map,
             lesson: Playback::default(),
+            geo_lab: geodesics::Lab::default(),
             setup: Setup::default(),
             view: None,
             running: false,
@@ -216,14 +219,20 @@ impl App {
     }
 
     fn open_lab(&mut self, lab: LabId) {
-        if LabId::from_mode(self.setup.mode) != lab {
-            if self.view.is_some() {
-                self.stop();
-            } else {
-                self.running = false;
+        if let Some(mode) = lab.mode() {
+            if LabId::from_mode(self.setup.mode) != lab {
+                if self.view.is_some() {
+                    self.stop();
+                } else {
+                    self.running = false;
+                }
             }
+            self.setup.mode = mode;
+        } else if self.view.is_some() {
+            self.stop();
+        } else {
+            self.running = false;
         }
-        self.setup.mode = lab.mode();
         self.screen = Screen::Lab(lab);
     }
 
@@ -356,18 +365,28 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if matches!(self.screen, Screen::Lab(_)) {
-            self.tick();
-            if self.running {
-                ctx.request_repaint();
+        match self.screen {
+            Screen::Lab(LabId::Geodesics) => {
+                let dt = ctx.input(|i| i.stable_dt);
+                self.geo_lab.tick(dt);
+                if self.geo_lab.playing {
+                    ctx.request_repaint();
+                }
             }
-        }
-        if let Screen::Lesson(_) = self.screen {
-            let dt = ctx.input(|i| i.stable_dt);
-            self.lesson.tick(dt);
-            if self.lesson.playing {
-                ctx.request_repaint();
+            Screen::Lab(_) => {
+                self.tick();
+                if self.running {
+                    ctx.request_repaint();
+                }
             }
+            Screen::Lesson(_) => {
+                let dt = ctx.input(|i| i.stable_dt);
+                self.lesson.tick(dt);
+                if self.lesson.playing {
+                    ctx.request_repaint();
+                }
+            }
+            Screen::Map => {}
         }
 
         match self.screen {
@@ -401,7 +420,11 @@ impl eframe::App for App {
                     self.back_to_map();
                     return;
                 }
-                self.draw_lab(ctx);
+                if lab == LabId::Geodesics {
+                    geodesics::draw_lab(ctx, &mut self.geo_lab);
+                } else {
+                    self.draw_lab(ctx);
+                }
             }
         }
     }
@@ -488,7 +511,11 @@ mod tests {
         for lab in LabId::ALL {
             app.open_lab(lab);
             assert_eq!(app.screen, Screen::Lab(lab));
-            assert_eq!(app.setup.mode, lab.mode());
+            if let Some(mode) = lab.mode() {
+                assert_eq!(app.setup.mode, mode);
+            } else {
+                assert_eq!(lab, LabId::Geodesics);
+            }
             assert_ne!(app.status, "Zatrzymano.");
             app.back_to_map();
             assert_eq!(app.screen, Screen::Map);
@@ -527,6 +554,42 @@ mod tests {
         app.back_to_map();
         assert_eq!(app.screen, Screen::Map);
         assert!(!app.running);
+    }
+
+    #[test]
+    fn geo_path_walks_into_the_drop_lab() {
+        let mut app = App::default();
+        let mut id = screen::Track::Geo.first();
+        app.open_lesson(id);
+        let mut hops = 0;
+        while let Some(next) = id.next() {
+            app.open_lesson(next);
+            id = next;
+            hops += 1;
+        }
+        assert_eq!(hops, 5);
+        assert_eq!(id.index, 6);
+        assert_eq!(
+            lesson::step(id, true),
+            lesson::Action::Lab(LabId::Geodesics)
+        );
+        app.open_course_lab(LabId::Geodesics);
+        assert_eq!(app.screen, Screen::Lab(LabId::Geodesics));
+        assert!(app.geo_lab.playing);
+        app.back_to_map();
+        assert_eq!(app.screen, Screen::Map);
+        assert!(!app.running);
+    }
+
+    #[test]
+    fn opening_geodesics_stops_a_cloud_run() {
+        let mut app = App::default();
+        app.open_lab(LabId::Nbody);
+        app.running = true;
+        app.open_lab(LabId::Geodesics);
+        assert!(!app.running);
+        assert_eq!(app.screen, Screen::Lab(LabId::Geodesics));
+        assert_eq!(LabId::Geodesics.mode(), None);
     }
 
     #[test]

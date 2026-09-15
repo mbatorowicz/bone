@@ -4,9 +4,10 @@
 //! w diagram, który da się ruszyć suwakiem. Minkowski to lekcje STW 1–3;
 //! zegary, linijka i 4-wektor to 4–6; lekcja 7 otwiera laboratorium N-ciał.
 //! Ścieżka geodezyjna 1–5: kula, gumowa siatka, film RK4 vs Euler.
-//! Laboratorium zrzucania jeszcze tu nie wchodzi.
+//! Lekcja 6 otwiera stół zrzucania; sam równik rysuje [`geodesics`].
 
 pub mod clocks;
+pub mod geodesics;
 pub mod metric_grid;
 pub mod minkowski;
 pub mod rk4_film;
@@ -65,6 +66,13 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
         (Track::Geo, 5) => {
             rk4_film::draw(ui, playback);
             Outcome::Drawn
+        }
+        (Track::Geo, 6) => {
+            if geodesics::draw_drop_door(ui) {
+                Outcome::OpenLab(LabId::Geodesics)
+            } else {
+                Outcome::Drawn
+            }
         }
         _ => Outcome::Placeholder,
     }

@@ -1,8 +1,8 @@
 //! Mapa kursu i identyfikatory lekcji oraz laboratoriów.
 //!
 //! Fizyka tu nie mieszka. Ten moduł wie tylko, *gdzie* jesteśmy i dokąd można
-//! przejść: trzy ścieżki, cztery istniejące laboratoria. Tekst i placeholder
-//! lekcji rysuje [`crate::lesson`]. Silnik i chmura zostają w panelu labu.
+//! przejść: trzy ścieżki, cztery chmury i stół zrzucania geodezyjnych. Tekst
+//! lekcji rysuje [`crate::lesson`]. Silnik chmury zostaje w panelu sim-labu.
 
 use eframe::egui::{self, Color32, RichText, Ui};
 
@@ -131,38 +131,53 @@ impl LessonId {
         })
     }
 
-    /// Ostatnia lekcja ścieżki A otwiera chmurę, nie wraca na mapę.
+    /// Ostatnia lekcja ścieżki A otwiera chmurę; B6 — stół zrzucania.
     pub fn opens_lab(self) -> Option<LabId> {
         match (self.track, self.index) {
             (Track::Stw, 7) => Some(LabId::Nbody),
+            (Track::Geo, 6) => Some(LabId::Geodesics),
             _ => None,
         }
     }
 }
 
-/// Istniejące laboratoria. Geodezyjne i raytracer dojdą, gdy będzie silnik.
+/// Laboratoria na mapie. Chmury mają [`Mode`]; zrzucanie rysuje równik, nie punkty.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LabId {
     Nbody,
     Cosmology,
     Particles,
     Atoms,
+    Geodesics,
 }
 
 impl LabId {
-    pub const ALL: [LabId; 4] = [
+    pub const ALL: [LabId; 5] = [
+        LabId::Nbody,
+        LabId::Cosmology,
+        LabId::Particles,
+        LabId::Atoms,
+        LabId::Geodesics,
+    ];
+
+    pub const SIM: [LabId; 4] = [
         LabId::Nbody,
         LabId::Cosmology,
         LabId::Particles,
         LabId::Atoms,
     ];
 
-    pub fn mode(self) -> Mode {
+    pub fn is_sim(self) -> bool {
+        self.mode().is_some()
+    }
+
+    pub fn mode(self) -> Option<Mode> {
         match self {
-            Self::Nbody => Mode::Relativistic,
-            Self::Cosmology => Mode::Cosmological,
-            Self::Particles => Mode::Particles,
-            Self::Atoms => Mode::Atoms,
+            Self::Nbody => Some(Mode::Relativistic),
+            Self::Cosmology => Some(Mode::Cosmological),
+            Self::Particles => Some(Mode::Particles),
+            Self::Atoms => Some(Mode::Atoms),
+            Self::Geodesics => None,
         }
     }
 
@@ -176,11 +191,31 @@ impl LabId {
     }
 
     pub fn label(self) -> &'static str {
-        self.mode().label()
+        match self {
+            Self::Nbody => Mode::Relativistic.label(),
+            Self::Cosmology => Mode::Cosmological.label(),
+            Self::Particles => Mode::Particles.label(),
+            Self::Atoms => Mode::Atoms.label(),
+            Self::Geodesics => "Geodezyjne",
+        }
     }
 
     pub fn subtitle(self) -> &'static str {
-        self.mode().subtitle()
+        match self {
+            Self::Nbody => Mode::Relativistic.subtitle(),
+            Self::Cosmology => Mode::Cosmological.subtitle(),
+            Self::Particles => Mode::Particles.subtitle(),
+            Self::Atoms => Mode::Atoms.subtitle(),
+            Self::Geodesics => "zrzut w równiku Schwarzschilda",
+        }
+    }
+
+    pub fn course_button(self) -> &'static str {
+        match self {
+            Self::Nbody => "Laboratorium N-ciała",
+            Self::Geodesics => "Laboratorium geodezyjnych",
+            _ => "Laboratorium",
+        }
     }
 }
 
@@ -243,9 +278,11 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(20.0);
         ui.label(RichText::new("Laboratoria").strong());
         ui.label(
-            RichText::new("Te same cztery modele co wcześniej: chmura, suwaki, start i pauza.")
-                .small()
-                .weak(),
+            RichText::new(
+                "Cztery chmury jak wcześniej i stół zrzucania: foton albo cząstka w równiku.",
+            )
+            .small()
+            .weak(),
         );
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {
@@ -377,18 +414,32 @@ mod tests {
             Some(LabId::Nbody)
         );
         assert_eq!(Track::Stw.first().opens_lab(), None);
-        assert_eq!(Track::Geo.lessons().last().unwrap().opens_lab(), None);
+        assert_eq!(
+            Track::Geo.lessons().last().unwrap().opens_lab(),
+            Some(LabId::Geodesics)
+        );
+        assert_eq!(Track::Geo.first().opens_lab(), None);
     }
 
     #[test]
-    fn labs_are_exactly_the_four_existing_modes() {
-        let modes: Vec<Mode> = LabId::ALL.iter().map(|lab| lab.mode()).collect();
+    fn sim_labs_are_exactly_the_four_existing_modes() {
+        let modes: Vec<Mode> = LabId::SIM.iter().map(|lab| lab.mode().unwrap()).collect();
         assert_eq!(modes, Mode::ALL.to_vec());
-        for lab in LabId::ALL {
-            assert_eq!(LabId::from_mode(lab.mode()), lab);
+        for lab in LabId::SIM {
+            assert_eq!(LabId::from_mode(lab.mode().unwrap()), lab);
+            assert!(lab.is_sim());
             assert!(!lab.label().is_empty());
             assert!(!lab.subtitle().is_empty());
         }
+        assert_eq!(LabId::ALL.len(), 5);
+        assert!(!LabId::Geodesics.is_sim());
+        assert_eq!(LabId::Geodesics.mode(), None);
+        assert_eq!(LabId::Geodesics.label(), "Geodezyjne");
+        assert!(!LabId::Geodesics.subtitle().is_empty());
+        assert_eq!(
+            LabId::Geodesics.course_button(),
+            "Laboratorium geodezyjnych"
+        );
     }
 
     #[test]
