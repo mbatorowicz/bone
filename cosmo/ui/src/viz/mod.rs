@@ -5,11 +5,14 @@
 //! zegary, linijka i 4-wektor to 4–6; lekcja 7 otwiera laboratorium N-ciał.
 //! Ścieżka geodezyjna 1–5: kula, gumowa siatka, film RK4 vs Euler.
 //! Lekcja 6 otwiera stół zrzucania; sam równik rysuje [`geodesics`].
+//! Ścieżka czarnej dziury 1–4: pierścienie, pęk i Einstein w 2D ([`rings`]).
+//! Laboratorium raytracera — krok 14 — tu jeszcze nie wchodzi.
 
 pub mod clocks;
 pub mod geodesics;
 pub mod metric_grid;
 pub mod minkowski;
+pub mod rings;
 pub mod rk4_film;
 pub mod sphere;
 
@@ -73,6 +76,10 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
             } else {
                 Outcome::Drawn
             }
+        }
+        (Track::Bh, 1..=4) => {
+            rings::draw(ui, id.index, playback);
+            Outcome::Drawn
         }
         _ => Outcome::Placeholder,
     }

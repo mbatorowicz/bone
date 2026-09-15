@@ -5,7 +5,8 @@
 //! spada do akapitu zamiast wywalić okno. Układ 60/40 i play/pauza są wspólne.
 //! STW 1–6 rysuje [`crate::viz`]; lekcja 7 otwiera laboratorium N-ciał.
 //! Geodezyjna 1–5 też: kula, siatka z suwakiem M, film RK4 vs Euler.
-//! Lekcja 6 otwiera stół zrzucania.
+//! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–4: pierścienie i pęk
+//! w 2D; raytracer pikseli zostaje na laboratorium.
 
 use std::f32::consts::TAU;
 
@@ -28,7 +29,8 @@ pub enum Action {
     Lab(LabId),
 }
 
-/// Play/pauza, faza pętli, β Minkowskiego, masa Schwarzschilda i obrót kuli.
+/// Play/pauza, faza pętli, β Minkowskiego, masa Schwarzschilda, obrót kuli
+/// i nachylenie dysku (ścieżka C, ten sam `spin`).
 ///
 /// Reset przy zmianie lekcji, żeby obraz nie skakał ze środka poprzedniej
 /// strony, a γ wracało do podręcznikowego 5/4 i M do jedynki z testów metryki.
@@ -542,6 +544,72 @@ let x = 1;
         assert_eq!(id.index, 7);
         assert_eq!(step(id, true), Action::Lab(LabId::Nbody));
         assert_eq!(step(Track::Stw.first(), false), Action::Map);
+    }
+
+    #[test]
+    fn bh_lessons_are_complete_lay_pages() {
+        for id in Track::Bh.lessons() {
+            let src = source(id);
+            let blocks = parse(src);
+            let headings: Vec<&str> = blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Heading { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            for need in ["Analogia", "Co widać", "Wzór", "W kodzie"] {
+                assert!(
+                    headings.contains(&need),
+                    "{}: brak sekcji {}",
+                    id.slug(),
+                    need
+                );
+            }
+            assert!(
+                blocks.iter().any(|b| matches!(b, Block::Callout(_))),
+                "brak calloutu {}",
+                id.slug()
+            );
+            let n_code = blocks
+                .iter()
+                .filter(|b| matches!(b, Block::Code { .. }))
+                .count();
+            assert_eq!(
+                n_code,
+                1,
+                "{}: oczekiwany jeden wzór, jest {n_code}",
+                id.slug()
+            );
+            assert!(
+                src.chars().count() > 1400,
+                "za krótka strona {} ({})",
+                id.slug(),
+                src.chars().count()
+            );
+        }
+    }
+
+    #[test]
+    fn bh_next_walks_to_the_fourth_lesson_then_map() {
+        let mut id = Track::Bh.first();
+        let mut hops = 0;
+        loop {
+            match step(id, true) {
+                Action::Lesson(next) => {
+                    id = next;
+                    hops += 1;
+                }
+                Action::Lab(_) => panic!("ścieżka C nie otwiera labu w kroku 13"),
+                Action::Map => break,
+                Action::None => panic!("krok nie może być pusty"),
+            }
+        }
+        assert_eq!(hops, 3);
+        assert_eq!(id.index, 4);
+        assert_eq!(step(id, true), Action::Map);
+        assert_eq!(step(Track::Bh.first(), false), Action::Map);
+        assert_eq!(id.opens_lab(), None);
     }
 
     #[test]
