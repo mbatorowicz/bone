@@ -409,6 +409,45 @@ let x = 1;
     }
 
     #[test]
+    fn stw_lessons_are_complete_lay_pages() {
+        for id in Track::Stw.lessons() {
+            let src = source(id);
+            let blocks = parse(src);
+            let headings: Vec<&str> = blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Heading { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            for need in ["Analogia", "Co widać", "Wzór", "W kodzie"] {
+                assert!(
+                    headings.iter().any(|h| *h == need),
+                    "{}: brak sekcji {}",
+                    id.slug(),
+                    need
+                );
+            }
+            assert!(
+                blocks.iter().any(|b| matches!(b, Block::Callout(_))),
+                "brak calloutu {}",
+                id.slug()
+            );
+            assert!(
+                blocks.iter().any(|b| matches!(b, Block::Code { .. })),
+                "brak wzoru {}",
+                id.slug()
+            );
+            assert!(
+                src.chars().count() > 1400,
+                "za krótka strona {} ({})",
+                id.slug(),
+                src.chars().count()
+            );
+        }
+    }
+
+    #[test]
     fn stw_next_walks_to_the_seventh_lesson_then_map() {
         let mut id = Track::Stw.first();
         let mut hops = 0;
