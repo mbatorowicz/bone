@@ -2,7 +2,8 @@
 //!
 //! Podział na moduły idzie po tym, co się zmienia niezależnie:
 //!
-//! - [`screen`] — mapa, placeholder lekcji, identyfikatory ścieżek i labów,
+//! - [`screen`] — mapa, identyfikatory ścieżek i labów,
+//! - [`lesson`] — ekran 60/40, parser Markdown, placeholder-animacja,
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela laboratorium, jedyne miejsce formularza `egui`,
@@ -16,6 +17,7 @@
 
 pub mod camera;
 pub mod charts;
+pub mod lesson;
 pub mod panels;
 pub mod render;
 pub mod replay;
@@ -27,6 +29,7 @@ use std::time::Instant;
 use eframe::egui::{self, Sense, TextureHandle, TextureOptions};
 
 use crate::camera::Camera;
+use crate::lesson::Playback;
 use crate::panels::{Action, Setup};
 use crate::replay::Replay;
 use crate::screen::{LabId, LessonId, Nav, Screen};
@@ -42,6 +45,7 @@ const SLOW_HOLD_FRAMES: u32 = 8;
 
 pub struct App {
     screen: Screen,
+    lesson: Playback,
     setup: Setup,
     view: Option<View>,
     running: bool,
@@ -58,6 +62,7 @@ impl Default for App {
     fn default() -> Self {
         Self {
             screen: Screen::Map,
+            lesson: Playback::default(),
             setup: Setup::default(),
             view: None,
             running: false,
@@ -222,6 +227,7 @@ impl App {
 
     fn open_lesson(&mut self, id: LessonId) {
         self.running = false;
+        self.lesson.reset();
         self.screen = Screen::Lesson(id);
     }
 
@@ -343,6 +349,13 @@ impl eframe::App for App {
                 ctx.request_repaint();
             }
         }
+        if let Screen::Lesson(_) = self.screen {
+            let dt = ctx.input(|i| i.stable_dt);
+            self.lesson.tick(dt);
+            if self.lesson.playing {
+                ctx.request_repaint();
+            }
+        }
 
         match self.screen {
             Screen::Map => {
@@ -355,14 +368,18 @@ impl eframe::App for App {
                 }
             }
             Screen::Lesson(id) => {
-                let mut back = screen::back_bar(ctx, id.title());
+                let to_map = screen::top_bar(ctx, "Mapa", id.title());
+                let mut action = lesson::Action::None;
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    if screen::draw_lesson(ui, id) {
-                        back = true;
-                    }
+                    action = lesson::draw(ui, id, &mut self.lesson);
                 });
-                if back {
-                    self.back_to_map();
+                if matches!(action, lesson::Action::None) && to_map {
+                    action = lesson::Action::Map;
+                }
+                match action {
+                    lesson::Action::Map => self.back_to_map(),
+                    lesson::Action::Lesson(next) => self.open_lesson(next),
+                    lesson::Action::None => {}
                 }
             }
             Screen::Lab(lab) => {
@@ -466,10 +483,21 @@ mod tests {
     }
 
     #[test]
-    fn a_path_opens_a_placeholder_lesson_with_a_way_back() {
+    fn a_path_opens_a_lesson_and_stw_walks_back_to_the_map() {
         let mut app = App::default();
-        app.open_lesson(screen::Track::Stw.first());
-        assert_eq!(app.screen, Screen::Lesson(screen::Track::Stw.first()));
+        let mut id = screen::Track::Stw.first();
+        app.open_lesson(id);
+        assert_eq!(app.screen, Screen::Lesson(id));
+        assert!(app.lesson.playing);
+        let mut hops = 0;
+        while let Some(next) = id.next() {
+            app.open_lesson(next);
+            id = next;
+            hops += 1;
+        }
+        assert_eq!(hops, 6);
+        assert_eq!(id.index, 7);
+        assert_eq!(lesson::step(id, true), lesson::Action::Map);
         app.back_to_map();
         assert_eq!(app.screen, Screen::Map);
     }

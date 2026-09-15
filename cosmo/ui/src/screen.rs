@@ -1,9 +1,8 @@
-//! Mapa kursu, placeholder lekcji i identyfikatory laboratoriów.
+//! Mapa kursu i identyfikatory lekcji oraz laboratoriów.
 //!
 //! Fizyka tu nie mieszka. Ten moduł wie tylko, *gdzie* jesteśmy i dokąd można
-//! przejść: trzy ścieżki (na razie karty-stuby), cztery istniejące laboratoria
-//! i pusty ekran lekcji z przyciskiem wstecz. Silnik i chmura zostają tam,
-//! gdzie były — panel laboratorium i rzut chmury.
+//! przejść: trzy ścieżki, cztery istniejące laboratoria. Tekst i placeholder
+//! lekcji rysuje [`crate::lesson`]. Silnik i chmura zostają w panelu labu.
 
 use eframe::egui::{self, Color32, RichText, Ui};
 
@@ -83,7 +82,7 @@ impl Track {
     }
 }
 
-/// Adres lekcji. Tekst i animacja przyjdą w kolejnych krokach; tu wystarczy ID.
+/// Adres lekcji. Tytuł i kolejność ścieżki żyją tu; tekst i obraz są w [`crate::lesson`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LessonId {
     pub track: Track,
@@ -116,6 +115,20 @@ impl LessonId {
             (Track::Bh, 4) => "Suwaki masy i nachylenia",
             _ => "Lekcja",
         }
+    }
+
+    pub fn prev(self) -> Option<Self> {
+        (self.index > 1).then_some(Self {
+            track: self.track,
+            index: self.index - 1,
+        })
+    }
+
+    pub fn next(self) -> Option<Self> {
+        (self.index < self.track.lesson_count()).then_some(Self {
+            track: self.track,
+            index: self.index + 1,
+        })
     }
 }
 
@@ -170,19 +183,24 @@ pub enum Nav {
     Lab(LabId),
 }
 
-/// Pasek „wstecz” nad lekcją i laboratorium.
-pub fn back_bar(ctx: &egui::Context, caption: &str) -> bool {
-    let mut back = false;
+/// Pasek nad lekcją i laboratorium. Przycisk zawsze wraca na mapę.
+pub fn top_bar(ctx: &egui::Context, button: &str, caption: &str) -> bool {
+    let mut clicked = false;
     egui::TopBottomPanel::top("academy-nav").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            if ui.button("Wstecz").clicked() {
-                back = true;
+            if ui.button(button).clicked() {
+                clicked = true;
             }
             ui.separator();
             ui.label(RichText::new(caption).strong());
         });
     });
-    back
+    clicked
+}
+
+/// Pasek „wstecz” nad laboratorium.
+pub fn back_bar(ctx: &egui::Context, caption: &str) -> bool {
+    top_bar(ctx, "Wstecz", caption)
 }
 
 pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
@@ -199,9 +217,11 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
 
         ui.label(RichText::new("Ścieżki").strong());
         ui.label(
-            RichText::new("Karty są na razie szkicem. Tekst i ruch wejdą w kolejnych krokach.")
-                .small()
-                .weak(),
+            RichText::new(
+                "Każda karta otwiera lekcje. Stub i placeholder — pełny tekst i fizyka później.",
+            )
+            .small()
+            .weak(),
         );
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {
@@ -237,20 +257,6 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(12.0);
     });
     nav
-}
-
-pub fn draw_lesson(ui: &mut Ui, id: LessonId) -> bool {
-    let mut back = false;
-    ui.add_space(16.0);
-    ui.label(RichText::new(id.title()).size(20.0).strong());
-    ui.label(RichText::new(id.slug()).small().weak().monospace());
-    ui.add_space(12.0);
-    ui.label("Ta lekcja jest jeszcze pusta. Wracamy tu z ruchem i tekstem w kolejnych krokach.");
-    ui.add_space(16.0);
-    if ui.button("Wstecz").clicked() {
-        back = true;
-    }
-    back
 }
 
 fn path_card(ui: &mut Ui, track: Track) -> Option<Nav> {
@@ -341,6 +347,19 @@ mod tests {
             .slug(),
             "bh/04"
         );
+        assert_eq!(Track::Stw.first().prev(), None);
+        assert_eq!(
+            Track::Stw.first().next().map(|id| id.slug()),
+            Some("stw/02".into())
+        );
+        assert_eq!(
+            LessonId {
+                track: Track::Stw,
+                index: 7
+            }
+            .next(),
+            None
+        );
     }
 
     #[test]
@@ -355,12 +374,11 @@ mod tests {
     }
 
     #[test]
-    fn map_and_lesson_placeholder_layout_without_a_window() {
+    fn map_layout_without_a_window() {
         let ctx = egui::Context::default();
         ctx.begin_pass(egui::RawInput::default());
         egui::CentralPanel::default().show(&ctx, |ui| {
             assert_eq!(draw_map(ui), None);
-            assert!(!draw_lesson(ui, Track::Stw.first()));
         });
         let _ = ctx.end_pass();
     }
