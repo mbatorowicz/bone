@@ -14,9 +14,10 @@
 //! - [`qm`] — laboratorium atomów. Wodór i He⁺ są dokładnym rozwiązaniem
 //!   Schrödingera; hel — wariacją z błędem ~2%; Slater zostaje jako lekcja
 //!   ekranowania z mierzonym błędem IE. Chmura to próbka `|ψ|²`.
-//! - [`gr`] — liczby kursu STW (na razie tylko [`gr::lorentz`]). Osobno od
-//!   [`sr`]: tu znacznik `(ct, x, y, z)`, tam pęd cząstki. Schwarzschild
-//!   i geodezyjna wejdą w kolejnych krokach.
+//! - [`gr`] — liczby kursu STW → OTW. [`gr::lorentz`] to boost i interwał;
+//!   [`gr::rk4`] to stepper; [`gr::metric`] to Schwarzschild jako `g_μν`.
+//!   Osobno od [`sr`]: tu znacznik `(ct, x, y, z)` albo metryka, tam pęd
+//!   cząstki. Γ i geodezyjna wejdą w następnym kroku.
 //!
 //! # Co jest wspólne
 //!

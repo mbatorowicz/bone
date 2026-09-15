@@ -5,12 +5,16 @@
 //! nie pęd cząstki. Dlatego ten katalog nie wolno zlewać z [`crate::sr`]:
 //! tam `γ` wychodzi z `p`, tu z prędkości układu.
 //!
-//! Metryka, RK4 i geodezyjna przychodzą w kolejnych krokach. Teraz jest tylko
-//! szczególna teoria względności jako arytmetyka.
+//! [`rk4`] to stepper na wektorze stanu. [`metric`] to Schwarzschild jako
+//! `g_μν` i trzy promienie `2M` / `3M` / `6M`. Γ i geodezyjna przychodzą
+//! osobno — tu jeszcze nie ma toru, tylko linijka i sposób robienia kroku.
 
 pub mod lorentz;
+pub mod metric;
+pub mod rk4;
 
 pub use lorentz::{
     boost, boost_x, compose_boost_1d, contract_rod, contracted_length, dilated_time, gamma,
     gamma_from_beta, Event, Superluminal,
 };
+pub use metric::{horizon_radius, isco_radius, photon_sphere_radius, MetricError, Schwarzschild};
