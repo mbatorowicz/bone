@@ -6,13 +6,17 @@
 //! tam `γ` wychodzi z `p`, tu z prędkości układu.
 //!
 //! [`rk4`] to stepper na wektorze stanu. [`metric`] to Schwarzschild jako
-//! `g_μν` i trzy promienie `2M` / `3M` / `6M`. Γ i geodezyjna przychodzą
-//! osobno — tu jeszcze nie ma toru, tylko linijka i sposób robienia kroku.
+//! `g_μν` i trzy promienie `2M` / `3M` / `6M`. [`christoffel`] to analityczne
+//! Γ, [`geodesic`] składa je z RK4 w tor `(t, r, θ, φ)`.
 
+pub mod christoffel;
+pub mod geodesic;
 pub mod lorentz;
 pub mod metric;
 pub mod rk4;
 
+pub use christoffel::Christoffel;
+pub use geodesic::{GeodesicError, GeodesicState};
 pub use lorentz::{
     boost, boost_x, compose_boost_1d, contract_rod, contracted_length, dilated_time, gamma,
     gamma_from_beta, Event, Superluminal,
