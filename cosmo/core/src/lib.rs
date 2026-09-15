@@ -14,6 +14,9 @@
 //! - [`qm`] — laboratorium atomów. Wodór i He⁺ są dokładnym rozwiązaniem
 //!   Schrödingera; hel — wariacją z błędem ~2%; Slater zostaje jako lekcja
 //!   ekranowania z mierzonym błędem IE. Chmura to próbka `|ψ|²`.
+//! - [`gr`] — liczby kursu STW (na razie tylko [`gr::lorentz`]). Osobno od
+//!   [`sr`]: tu znacznik `(ct, x, y, z)`, tam pęd cząstki. Schwarzschild
+//!   i geodezyjna wejdą w kolejnych krokach.
 //!
 //! # Co jest wspólne
 //!
@@ -34,6 +37,7 @@
 pub mod cli;
 pub mod constants;
 pub mod fft;
+pub mod gr;
 pub mod grid;
 pub mod io;
 pub mod lcdm;
