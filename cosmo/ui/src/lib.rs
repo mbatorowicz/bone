@@ -1,12 +1,13 @@
-//! Okno desktopowe: panel z nastawami i rzut chmury.
+//! Okno desktopowe: mapa kursu, a potem lekcja albo laboratorium.
 //!
 //! Podział na moduły idzie po tym, co się zmienia niezależnie:
 //!
+//! - [`screen`] — mapa, placeholder lekcji, identyfikatory ścieżek i labów,
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
-//! - [`panels`] — formularz i tabela, jedyne miejsce dotykające `egui`,
+//! - [`panels`] — formularz i tabela laboratorium, jedyne miejsce formularza `egui`,
 //! - [`simulation`] — cztery modele pod jednym interfejsem,
-//! - ten moduł — pętla klatek i decyzje: kiedy startować, kiedy liczyć.
+//! - ten moduł — pętla klatek i decyzje: który ekran, kiedy startować, kiedy liczyć.
 //!
 //! Ten podział jest warunkiem testowalności, nie porządkiem dla porządku: kamera,
 //! renderer i opis stanu biegu nie dotykają `egui`, więc dają się sprawdzić bez okna
@@ -18,6 +19,7 @@ pub mod charts;
 pub mod panels;
 pub mod render;
 pub mod replay;
+pub mod screen;
 pub mod simulation;
 
 use std::time::Instant;
@@ -26,9 +28,10 @@ use eframe::egui::{self, Sense, TextureHandle, TextureOptions};
 
 use crate::camera::Camera;
 use crate::panels::{Action, Setup};
-use bone_core::session::Session;
 use crate::replay::Replay;
+use crate::screen::{LabId, LessonId, Nav, Screen};
 use crate::simulation::{Mode, View};
+use bone_core::session::Session;
 
 /// Ile klatek odczekać na najniższym ustawieniu szybkości.
 ///
@@ -38,6 +41,7 @@ use crate::simulation::{Mode, View};
 const SLOW_HOLD_FRAMES: u32 = 8;
 
 pub struct App {
+    screen: Screen,
     setup: Setup,
     view: Option<View>,
     running: bool,
@@ -53,6 +57,7 @@ pub struct App {
 impl Default for App {
     fn default() -> Self {
         Self {
+            screen: Screen::Map,
             setup: Setup::default(),
             view: None,
             running: false,
@@ -82,16 +87,13 @@ impl App {
         let out = std::path::PathBuf::from(&self.setup.out_dir);
         let record = self.setup.record;
 
-        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            match self.setup.mode {
-                Mode::Relativistic => {
-                    Session::start_sr(self.setup.sr.clone(), out, record)
-                }
+        let built =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match self.setup.mode {
+                Mode::Relativistic => Session::start_sr(self.setup.sr.clone(), out, record),
                 Mode::Cosmological => Session::start_lcdm(self.setup.lcdm, out, record),
                 Mode::Particles => Session::start_sm(self.setup.sm.clone(), out, record),
                 Mode::Atoms => Session::start_qm(self.setup.qm.clone(), out, record),
-            }
-        }));
+            }));
 
         match built {
             Ok(Ok(session)) => {
@@ -106,10 +108,9 @@ impl App {
                 self.running = false;
             }
             Err(_) => {
-                self.error =
-                    "Nie udało się złożyć warunków początkowych — za duża siatka albo \
+                self.error = "Nie udało się złożyć warunków początkowych — za duża siatka albo \
                      za mało pamięci."
-                        .to_string();
+                    .to_string();
                 self.running = false;
             }
         }
@@ -207,6 +208,35 @@ impl App {
         }
     }
 
+    fn open_lab(&mut self, lab: LabId) {
+        if LabId::from_mode(self.setup.mode) != lab {
+            if self.view.is_some() {
+                self.stop();
+            } else {
+                self.running = false;
+            }
+        }
+        self.setup.mode = lab.mode();
+        self.screen = Screen::Lab(lab);
+    }
+
+    fn open_lesson(&mut self, id: LessonId) {
+        self.running = false;
+        self.screen = Screen::Lesson(id);
+    }
+
+    fn back_to_map(&mut self) {
+        self.running = false;
+        self.screen = Screen::Map;
+    }
+
+    fn follow_nav(&mut self, nav: Nav) {
+        match nav {
+            Nav::Lesson(id) => self.open_lesson(id),
+            Nav::Lab(lab) => self.open_lab(lab),
+        }
+    }
+
     fn stop(&mut self) {
         if let Some(View::Live(session)) = self.view.take() {
             if self.setup.record {
@@ -226,7 +256,8 @@ impl App {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::drag());
         if response.dragged_by(egui::PointerButton::Secondary) {
             let delta = response.drag_delta();
-            self.camera.pan_by(delta.x, delta.y, rect.width(), rect.height());
+            self.camera
+                .pan_by(delta.x, delta.y, rect.width(), rect.height());
         } else if response.dragged_by(egui::PointerButton::Primary) {
             let delta = response.drag_delta();
             self.camera.orbit(delta.x, delta.y);
@@ -248,7 +279,10 @@ impl App {
                 existing
             }
             slot => {
-                *slot = Some(ui.ctx().load_texture("cloud", image, TextureOptions::LINEAR));
+                *slot = Some(
+                    ui.ctx()
+                        .load_texture("cloud", image, TextureOptions::LINEAR),
+                );
                 slot.as_mut().expect("tekstura po zapisie")
             }
         };
@@ -260,15 +294,8 @@ impl App {
             .fit_to_exact_size(rect.size())
             .paint_at(ui, rect);
     }
-}
 
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.tick();
-        if self.running {
-            ctx.request_repaint();
-        }
-
+    fn draw_lab(&mut self, ctx: &egui::Context) {
         let action = egui::SidePanel::left("panel")
             .resizable(false)
             .min_width(300.0)
@@ -300,7 +327,52 @@ impl eframe::App for App {
             Action::None => {}
         }
 
+        if let Screen::Lab(_) = self.screen {
+            self.screen = Screen::Lab(LabId::from_mode(self.setup.mode));
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| self.draw_cloud(ui));
+    }
+}
+
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if matches!(self.screen, Screen::Lab(_)) {
+            self.tick();
+            if self.running {
+                ctx.request_repaint();
+            }
+        }
+
+        match self.screen {
+            Screen::Map => {
+                let mut nav = None;
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    nav = screen::draw_map(ui);
+                });
+                if let Some(nav) = nav {
+                    self.follow_nav(nav);
+                }
+            }
+            Screen::Lesson(id) => {
+                let mut back = screen::back_bar(ctx, id.title());
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    if screen::draw_lesson(ui, id) {
+                        back = true;
+                    }
+                });
+                if back {
+                    self.back_to_map();
+                }
+            }
+            Screen::Lab(lab) => {
+                if screen::back_bar(ctx, lab.label()) {
+                    self.back_to_map();
+                    return;
+                }
+                self.draw_lab(ctx);
+            }
+        }
     }
 }
 
@@ -311,11 +383,15 @@ pub fn run() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([960.0, 640.0])
-            .with_title("Bone — N ciał, cząstki i atomy"),
+            .with_title("Bone — czasoprzestrzeń"),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
-    eframe::run_native("Bone", options, Box::new(|_cc| Ok(Box::new(App::default()))))
+    eframe::run_native(
+        "Bone",
+        options,
+        Box::new(|_cc| Ok(Box::new(App::default()))),
+    )
 }
 
 #[cfg(test)]
@@ -366,5 +442,47 @@ mod tests {
         app.tick();
         assert!(app.error.is_empty());
         assert_eq!(app.ms_per_step, 0.0);
+    }
+
+    #[test]
+    fn the_app_opens_on_the_course_map() {
+        let app = App::default();
+        assert_eq!(app.screen, Screen::Map);
+        assert!(!matches!(app.screen, Screen::Lab(_)));
+    }
+
+    #[test]
+    fn each_lab_opens_from_the_map_and_returns() {
+        let mut app = App::default();
+        for lab in LabId::ALL {
+            app.open_lab(lab);
+            assert_eq!(app.screen, Screen::Lab(lab));
+            assert_eq!(app.setup.mode, lab.mode());
+            assert_ne!(app.status, "Zatrzymano.");
+            app.back_to_map();
+            assert_eq!(app.screen, Screen::Map);
+            assert!(!app.running);
+        }
+    }
+
+    #[test]
+    fn a_path_opens_a_placeholder_lesson_with_a_way_back() {
+        let mut app = App::default();
+        app.open_lesson(screen::Track::Stw.first());
+        assert_eq!(app.screen, Screen::Lesson(screen::Track::Stw.first()));
+        app.back_to_map();
+        assert_eq!(app.screen, Screen::Map);
+    }
+
+    #[test]
+    fn switching_lab_stops_the_previous_run() {
+        let mut app = App::default();
+        app.open_lab(LabId::Nbody);
+        app.running = true;
+        app.open_lab(LabId::Atoms);
+        assert!(!app.running);
+        assert_eq!(app.screen, Screen::Lab(LabId::Atoms));
+        assert_eq!(app.setup.mode, Mode::Atoms);
+        assert_ne!(app.status, "Zatrzymano.");
     }
 }
