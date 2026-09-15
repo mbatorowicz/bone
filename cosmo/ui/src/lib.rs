@@ -3,7 +3,8 @@
 //! Podział na moduły idzie po tym, co się zmienia niezależnie:
 //!
 //! - [`screen`] — mapa, identyfikatory ścieżek i labów,
-//! - [`lesson`] — ekran 60/40, parser Markdown, placeholder-animacja,
+//! - [`lesson`] — ekran 60/40, parser Markdown, play/pauza,
+//! - [`viz`] — ruchomy obraz lekcji (Minkowski STW 1–3; później zegary i siatka),
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela laboratorium, jedyne miejsce formularza `egui`,
@@ -23,6 +24,7 @@ pub mod render;
 pub mod replay;
 pub mod screen;
 pub mod simulation;
+pub mod viz;
 
 use std::time::Instant;
 

@@ -1,9 +1,9 @@
-//! Ekran lekcji: tekst z Markdown po prawej, placeholder-animacja po lewej.
+//! Ekran lekcji: tekst z Markdown po prawej, obraz po lewej.
 //!
-//! Fizyki tu nie ma. Parser zna nagłówki, akapity, `> callout` i fenced code —
+//! Parser zna nagłówki, akapity, `> callout` i fenced code —
 //! tyle, ile stuby i późniejsze teksty kursu naprawdę użyją. Nieznany znacznik
-//! spada do akapitu zamiast wywalić okno. Układ 60/40 i play/pauza są wspólne
-//! dla wszystkich lekcji; prawdziwy obraz podmieni się w krokach animacji.
+//! spada do akapitu zamiast wywalić okno. Układ 60/40 i play/pauza są wspólne.
+//! STW 1–3 rysuje [`crate::viz`]; reszta zostaje przy placeholdrze.
 
 use std::f32::consts::TAU;
 
@@ -25,12 +25,15 @@ pub enum Action {
     Lesson(LessonId),
 }
 
-/// Play/pauza i faza pętli. Reset przy zmianie lekcji, żeby obraz nie skakał
-/// ze środka okręgu poprzedniej strony.
+/// Play/pauza, faza pętli i β suwaka Minkowskiego.
+///
+/// Reset przy zmianie lekcji, żeby obraz nie skakał ze środka poprzedniej
+/// strony, a γ wracało do podręcznikowego 5/4.
 #[derive(Clone, Copy, Debug)]
 pub struct Playback {
     pub playing: bool,
     pub t: f32,
+    pub beta: f64,
 }
 
 impl Default for Playback {
@@ -38,6 +41,7 @@ impl Default for Playback {
         Self {
             playing: true,
             t: 0.0,
+            beta: crate::viz::BETA_DEFAULT,
         }
     }
 }
@@ -188,7 +192,9 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Action {
             action = draw_text(ui, id);
         });
     egui::CentralPanel::default().show_inside(ui, |ui| {
-        draw_placeholder(ui, playback);
+        if !crate::viz::draw(ui, id, playback) {
+            draw_placeholder(ui, playback);
+        }
     });
     action
 }
@@ -422,7 +428,7 @@ let x = 1;
                 .collect();
             for need in ["Analogia", "Co widać", "Wzór", "W kodzie"] {
                 assert!(
-                    headings.iter().any(|h| *h == need),
+                    headings.contains(&need),
                     "{}: brak sekcji {}",
                     id.slug(),
                     need
@@ -480,6 +486,8 @@ let x = 1;
         p.reset();
         assert!(p.playing);
         assert_eq!(p.t, 0.0);
+        assert_eq!(p.beta, crate::viz::BETA_DEFAULT);
+        assert!((crate::viz::minkowski::gamma_of(p.beta) - 1.25).abs() < 1e-15);
     }
 
     #[test]
