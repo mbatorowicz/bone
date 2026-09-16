@@ -807,6 +807,69 @@ let x = 1;
     }
 
     #[test]
+    fn pde_lessons_are_complete_lay_pages() {
+        for id in Track::Pde.lessons() {
+            let src = source(id);
+            let blocks = parse(src);
+            let headings: Vec<&str> = blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Heading { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            for need in ["Analogia", "Co widać", "Wzór", "W kodzie"] {
+                assert!(
+                    headings.contains(&need),
+                    "{}: brak sekcji {}",
+                    id.slug(),
+                    need
+                );
+            }
+            assert!(
+                blocks.iter().any(|b| matches!(b, Block::Callout(_))),
+                "brak calloutu {}",
+                id.slug()
+            );
+            let n_code = blocks
+                .iter()
+                .filter(|b| matches!(b, Block::Code { .. }))
+                .count();
+            assert_eq!(
+                n_code,
+                1,
+                "{}: oczekiwany jeden wzór, jest {n_code}",
+                id.slug()
+            );
+            assert!(
+                src.chars().count() > 1400,
+                "za krótka strona {} ({})",
+                id.slug(),
+                src.chars().count()
+            );
+            assert!(
+                src.contains("placeholder"),
+                "krok 33: animacja jeszcze nie wchodzi {}",
+                id.slug()
+            );
+            assert!(
+                !src.contains("gr::fd.rs"),
+                "krok 33 bez silnika fd {}",
+                id.slug()
+            );
+        }
+        let last = source(Track::Pde.lessons().last().unwrap());
+        assert!(
+            last.contains("mapę"),
+            "PDE 4 wraca na mapę"
+        );
+        assert!(
+            last.contains("Nie ma tu labu") || last.contains("Nie ma labu"),
+            "PDE 4 bez labu"
+        );
+    }
+
+    #[test]
     fn bh_next_walks_to_the_fourth_lesson_then_raytracer() {
         let mut id = Track::Bh.first();
         let mut hops = 0;
