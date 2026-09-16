@@ -315,7 +315,7 @@ Wykonaj krok 15 z docs/kurs-otw-kroki.md. README + landing, pełne testy i clipp
 ---
 
 Rdzeń (kroki 1–15) jest na mapie. Fala 2: tensory → równania Einsteina → PINN.
-Kerr i PDE na siatce zostają później.
+Fala 3: animacje ten/ein/pinn. Fala 4: Kerr i siatka PDE (kroki 26–36).
 
 ## Krok 16 — Powłoka: tensory, Einstein, PINN
 
@@ -473,4 +473,194 @@ Wykonaj krok 24 z docs/kurs-otw-kroki.md. Animacje lekcji Einstein 1–4. Liczby
 Wykonaj krok 25 z docs/kurs-otw-kroki.md. Animacje PINN, podpis mapy, testy i clippy, commit i push. Bez Kerra i bez CUDA.
 ```
 
-Kerr i PDE na siatce zostają później.
+---
+
+Fala 3 (kroki 23–25) jest na mapie. Fala 4: Kerr → siatka PDE. Zderzenia, CUDA i PINN na `g_μν` zostają później.
+
+## Krok 26 — Powłoka: Kerr, siatka PDE
+
+**Cel:** Na mapie widać dwie kolejne ścieżki. Wejście w STW / geo / BH / ten / ein / pinn i laboratoria działa jak dziś.
+
+**Zależności:** krok 25.
+
+**Start:** `cosmo/ui/src/screen.rs`, `cosmo/ui/src/lesson.rs`, katalog `cosmo/lessons/`.
+
+**Zrób:** `Track::{Kerr, Pde}` jako `Track::LATER`. Slugi `kerr` / `pde`. Stuby: `kerr/01`–`04`, `pde/01`–`04`. Mapa: sekcja „Obrót i siatka”. Lekcja — istniejący 60/40 i placeholder-animacja. Ostatnia lekcja Kerr na razie wraca na mapę (drzwi do labu w kroku 31). Ostatnia lekcja PDE wraca na mapę, bez labu. Bez `gr::kerr`, bez `gr::fd`, bez suwaka `a`.
+
+**Gotowe gdy:** `cargo test --workspace` zielone; z mapy da się otworzyć każdą nową lekcję i wrócić; raytracer nadal `spin = 0`.
+
+**Prompt:**
+
+```
+Wykonaj krok 26 z docs/kurs-otw-kroki.md. Powłoka dwóch ścieżek: Kerr i siatka PDE. Stuby i placeholder. Bez gr::kerr, bez suwaka a, bez różniczek skończonych.
+```
+
+## Krok 27 — Teksty Kerr dla laika
+
+**Cel:** Ścieżka `kerr` kompletna tekstowo.
+
+**Zależności:** krok 26.
+
+**Pliki:** `cosmo/lessons/kerr/*.md`.
+
+**Zrób:** lekcje 1–4: wleczenie układu (karuzela, `g_tφ`, `a = 0` to stara mata); ergosphera vs horyzont `r+`; pierścienie pękają (`r±`, foton±, ISCO±); cień nie na środku. Laik, analogia → obraz → wzór → kod. Bez Kerra w silniku, bez nowych animacji, bez Cauchy horizon.
+
+**Prompt:**
+
+```
+Wykonaj krok 27 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki Kerr. Bez silnika i bez nowych animacji.
+```
+
+## Krok 28 — `gr::kerr` metryka
+
+**Cel:** Boyer-Lindquist jako liczby w `bone-core`, testowane, bez UI.
+
+**Zależności:** krok 7 (`Schwarzschild` do testu `a = 0`).
+
+**Pliki:** `cosmo/core/src/gr/kerr.rs`; `pub mod kerr` w `gr/mod.rs`.
+
+**Zrób:** `Kerr { mass, spin }` z `|a| ≤ M`. `Δ`, `Σ`, `g_μν` (w tym `g_tφ`), `r+`, ergo(`θ`), ISCO±, foton±. `|a| > M` to błąd. Test: `a = 0` zgadza się z `Schwarzschild` (`g_tφ = 0`, `r+ = 2M`, ergo = `2M`). Bez Γ, bez geodezyjnej, bez raytracera.
+
+**Prompt:**
+
+```
+Wykonaj krok 28 z docs/kurs-otw-kroki.md. Tylko gr::kerr metryka z testami. Bez Γ, bez UI, bez raytracera.
+```
+
+## Krok 29 — Γ + geodezyjna Kerra
+
+**Cel:** Ruch w Kerrze da się scałkować; `a = 0` wraca do znanego koła `6M`.
+
+**Zależności:** krok 28.
+
+**Pliki:** `cosmo/core/src/gr/kerr.rs` (Γ i `rhs` w tym samym module).
+
+**Zrób:** analityczne Γ Kerra — nowy typ, nie `Christoffel` Schwarzschilda (`accel` nie zna `g_tφ`). Ten sam stan 8 liczb i `gr::rk4`. Zachowanie `E` i `L_z`. Test: `a = 0` koło `6M` jak w `geodesic`; `a ≠ 0` ISCO współ < `6M`. Bez traitu `Spacetime` na Schwarzschildu. Bez raytracera.
+
+**Prompt:**
+
+```
+Wykonaj krok 29 z docs/kurs-otw-kroki.md. Γ i geodezyjna Kerra z testami E/L i a = 0 → 6M. Bez raytracera i bez UI.
+```
+
+## Krok 30 — Raytrace ze spinem
+
+**Cel:** Ten sam bufor pikseli, horyzont `r+`; `a = 0` nie psuje starych testów.
+
+**Zależności:** krok 29.
+
+**Pliki:** `cosmo/core/src/gr/raytrace.rs`.
+
+**Zrób:** `Config.spin` (domyślnie 0). Przy zerze istniejące testy 32×18 zostają. Przy `a ≠ 0` geodezyjna z `gr::kerr`, horyzont `r+` nie `2M`. Test: `a = 0.9` cień niesymetryczny (losy lewo/prawo się różnią). Bez okna, bez drugiego labu.
+
+**Prompt:**
+
+```
+Wykonaj krok 30 z docs/kurs-otw-kroki.md. Config.spin w gr::raytrace z testami a = 0 i cienia. Bez UI.
+```
+
+## Krok 31 — Animacje Kerr
+
+**Cel:** Ścieżka `kerr` ma ruchomy obraz; liczby z `gr::kerr`.
+
+**Zależności:** kroki 27 i 29.
+
+**Pliki:** `cosmo/ui/src/viz/kerr.rs`; podpięcie w `viz/mod.rs`; `cosmo/lessons/kerr/*.md` (akapit „Co widać”).
+
+**Zrób:** lekcje 1–4. Wleczenie (strzałki `g_tφ`); ergo vs `r+`; pęk pierścieni foton± / ISCO±; zapowiedź cienia. Suwak `a/M`, play/pauza. Lekcja 4: drzwi do `LabId::BlackHole`. Bez PDE, bez CUDA.
+
+**Gotowe gdy:** suwak `a` widać od razu; `a = 0` wraca do kółek `2M` / `3M` / `6M`.
+
+**Prompt:**
+
+```
+Wykonaj krok 31 z docs/kurs-otw-kroki.md. Animacje lekcji Kerr 1–4. Liczby z gr::kerr. Bez suwaka a w laboratorium raytracera.
+```
+
+## Krok 32 — Suwak `a` w raytracerze
+
+**Cel:** Jeden stół raytracera; ścieżka C nadal startuje z `a = 0`.
+
+**Zależności:** kroki 30 i 31.
+
+**Pliki:** `cosmo/ui/src/viz/blackhole.rs`; `cosmo/ui/src/screen.rs` (podpis labu).
+
+**Zrób:** suwak `a/M` ∈ [0, 0.998]. Tło 320×180 jak dziś. Overlay `r+` / ergo / ISCO±. Wejście z BH: `spin = 0`. Wejście z Kerr 4: wartość z lekcji. Test `spin = 0` zostaje prawdziwy dla ścieżki C. Bez drugiego `LabId`, bez zderzeń.
+
+**Gotowe gdy:** zmiana `a` pokazuje „liczę…” i nowy cień; okno reaguje w trakcie.
+
+**Prompt:**
+
+```
+Wykonaj krok 32 z docs/kurs-otw-kroki.md. Suwak a w istniejącym laboratorium raytracera. Ścieżka C startuje z zerem. Bez nowego LabId i bez PDE.
+```
+
+## Krok 33 — Teksty siatka PDE dla laika
+
+**Cel:** Ścieżka `pde` kompletna tekstowo.
+
+**Zależności:** krok 26.
+
+**Pliki:** `cosmo/lessons/pde/*.md`.
+
+**Zrób:** lekcje 1–4: węzły zamiast suwaków (ten sam residual co PINN, inna pamięć); ciepło 1D (FTCS, CFL); fala 1D (leapfrog); dlaczego Einstein na siatce to miliony węzłów × 10 kratek. Laik, analogia → obraz → wzór → kod. Bez `gr::fd`, bez CUDA, bez zgadywania `g_μν`. Ostatnia lekcja wraca na mapę.
+
+**Prompt:**
+
+```
+Wykonaj krok 33 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki siatka PDE. Bez silnika i bez nowych animacji.
+```
+
+## Krok 34 — `gr::fd`
+
+**Cel:** Residual PDE na węzłach 1D, testowany, bez UI.
+
+**Zależności:** krok 22 (`heat_exact` / `wave_exact` do porównania).
+
+**Pliki:** `cosmo/core/src/gr/fd.rs`.
+
+**Zrób:** siatka 1D, krok ciepła (FTCS) i fali (leapfrog). Te same wzory analityczne co `gr::pinn`. Test: residual analitycznego `u` → 0 przy zagęszczaniu; CFL pilnowane. Nie ruszać `cosmo/core/src/grid.rs` (CIC N-ciał). Bez PyTorcha, bez `g_μν`, bez 2D.
+
+**Prompt:**
+
+```
+Wykonaj krok 34 z docs/kurs-otw-kroki.md. Tylko gr::fd z testami. Bez UI, bez CUDA, bez ruszania grid.rs N-ciał.
+```
+
+## Krok 35 — Animacje siatka PDE
+
+**Cel:** Ścieżka `pde` ma ruchomy obraz; liczby z `gr::fd`.
+
+**Zależności:** kroki 33 i 34.
+
+**Pliki:** `cosmo/ui/src/viz/fd.rs`; podpięcie w `viz/mod.rs`; `cosmo/lessons/pde/*.md` (akapit „Co widać”).
+
+**Zrób:** lekcje 1–4. Węzły vs wzmacniacz PINN; garnek FTCS; struna leapfrog; półka Schwarzschilda vs siatka (strzałka przekreślona). Play/pauza. Bez labu. Bez zgadywania metryki.
+
+**Gotowe gdy:** residual analitycznego ciepła na węzłach ≈ 0 na ekranie.
+
+**Prompt:**
+
+```
+Wykonaj krok 35 z docs/kurs-otw-kroki.md. Animacje lekcji siatka PDE 1–4. Liczby z gr::fd. Bez CUDA i bez g_μν.
+```
+
+## Krok 36 — Mapa, README, siatka
+
+**Cel:** Mapa nie pisze „Bez Kerra”; README zapowiada falę, nie obiecuje zderzeń.
+
+**Zależności:** kroki 26–35.
+
+**Pliki:** `cosmo/ui/src/screen.rs`; `README.md`; `cosmo/README.md`; ewentualnie `www/index.html`.
+
+**Zrób:** podpisy sekcji „Obrót i siatka” bez stubu. `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`. Commit + push. Bez force push. Bez zderzeń, bez CUDA, bez PINN na metryce.
+
+**Gotowe gdy:** testy i clippy czyste; z mapy Kerr 4 otwiera raytracer z `a`, PDE 4 wraca na mapę.
+
+**Prompt:**
+
+```
+Wykonaj krok 36 z docs/kurs-otw-kroki.md. Podpisy mapy i README, pełne testy i clippy, commit i push. Bez zderzeń i bez CUDA.
+```
+
+Zderzenia czarnych dziur, CUDA/MPI i PINN na `g_μν` zostają później.

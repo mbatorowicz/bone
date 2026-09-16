@@ -21,8 +21,8 @@ nie w laboratorium N-ciał.
   obraz dysku w tle, z nakładką trzech promieni.
 
 Potem trzy następne działy na mapie — tensory, równania Einsteina, PINN —
-z tekstem, silnikiem i animacją. Ostatnia lekcja wraca na mapę. Kerr
-zostaje za tą falą.
+z tekstem, silnikiem i animacją. Ostatnia lekcja wraca na mapę. Następna
+fala to Kerr i siatka PDE (kroki 26–36).
 
 Moduł `gr` (Lorentz, RK4, metryka, Christoffel, geodezyjna, raytrace,
 tensor, Einstein, PINN)
