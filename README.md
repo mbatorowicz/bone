@@ -21,11 +21,17 @@ nie w laboratorium N-ciał.
   obraz dysku w tle, z nakładką trzech promieni.
 
 Potem trzy następne działy na mapie — tensory, równania Einsteina, PINN —
-z tekstem, silnikiem i animacją. Ostatnia lekcja wraca na mapę. Następna
-fala to Kerr i siatka PDE (kroki 26–36).
+z tekstem, silnikiem i animacją. Ostatnia lekcja wraca na mapę.
+
+- **Kerr** (`kerr/01`–`04`) — wleczenie, ergosphera, pęk pierścieni.
+  Lekcja 4 otwiera raytracer z suwakiem `a/M`. Ścieżka C startuje od zera.
+- **Siatka PDE** (`pde/01`–`04`) — węzły zamiast suwaków PINN, ciepło FTCS
+  i fala leapfrog w 1D. Lekcja 4 wraca na mapę. To nie jest metryka na siatce.
+
+Następna fala: CUDA/MPI i PINN na `g_μν`. Bez zderzeń czarnych dziur.
 
 Moduł `gr` (Lorentz, RK4, metryka, Christoffel, geodezyjna, raytrace,
-tensor, Einstein, PINN)
+tensor, Einstein, PINN, Kerr, siatka PDE)
 jest osobny od `sr`. Slug `sr` to identyfikator chmury N-ciał, nie nazwa
 teorii: tam nadal nie ma metryki w sile ani fal grawitacyjnych.
 
@@ -56,7 +62,7 @@ liczba, która odróżnia przybliżenie od usterki.
 ```bash
 cd cosmo
 cargo build --release          # wynik: target/release/BoneCosmo
-cargo test --workspace         # 688 testów
+cargo test --workspace         # 750 testów
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
@@ -342,7 +348,8 @@ to wykrywa i ostrzega, zamiast po cichu przyciąć. Żeby dobrać `G` świadomie
 cosmo/
   core/          bone-core — fizyka, I/O, sesja, CLI
     vec3, rng, fft, grid, mesh
-    gr/          lorentz, rk4, metric, christoffel, geodesic, raytrace
+    gr/          lorentz, rk4, metric, christoffel, geodesic, raytrace,
+                 tensor, einstein, pinn, kerr, fd
                  — kurs STW→OTW, osobno od sr
     sr/          relativity, state, config, presets, spawn,
                  backends/exact, integrator, cooling, diagnostics, engine
@@ -354,7 +361,7 @@ cosmo/
     constants.rs CODATA 2022, PDG 2025 — jedno źródło stałych
     session.rs   wspólna pętla: krok, diagnostyka, zapis
     cli.rs       bieg wsadowy
-  lessons/       Markdown ścieżek stw/, geo/, bh/
+  lessons/       Markdown: stw/, geo/, bh/, ten/, ein/, pinn/, kerr/, pde/
   ui/            bone-ui — mapa kursu, lekcje, viz, kamera, renderer, panel
   app/           binarka BoneCosmo
 ```

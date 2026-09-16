@@ -468,8 +468,10 @@ mod tests {
 
     #[test]
     fn default_cfl_stays_under_the_lid() {
-        assert!(R_SAFE <= 0.5);
-        assert!(LAMBDA_SAFE <= 1.0);
+        const {
+            assert!(R_SAFE <= 0.5);
+            assert!(LAMBDA_SAFE <= 1.0);
+        }
         assert!((clamp_r(R_SAFE) - R_SAFE).abs() < 1e-15);
         assert!((clamp_r(2.0) - 0.85).abs() < 1e-15);
         assert!((clamp_lambda(LAMBDA_SAFE) - LAMBDA_SAFE).abs() < 1e-15);

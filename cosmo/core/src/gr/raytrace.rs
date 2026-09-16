@@ -9,6 +9,7 @@
 //! Domyślny kadr to 320×180 na CPU. Testy biorą 32×18, żeby kończyć się
 //! w rozsądnym czasie bez okna.
 
+use std::cmp::Ordering;
 use std::f64::consts::FRAC_PI_2;
 use std::fmt;
 
@@ -601,7 +602,7 @@ fn seed_direction_kerr(
         return Err(RaytraceError::CameraInside { r, horizon });
     }
     let gtt = bh.g_tt(r, theta)?;
-    if !(gtt < 0.0) {
+    if gtt.partial_cmp(&0.0) != Some(Ordering::Less) {
         return Err(RaytraceError::CameraInside { r, horizon });
     }
     let grr = bh.g_rr(r, theta)?;
@@ -612,7 +613,11 @@ fn seed_direction_kerr(
     let e_r_r = 1.0 / grr.sqrt();
     let e_th = 1.0 / gthth.sqrt();
     let spat_phi = gpp - gtp * gtp / gtt;
-    if !(spat_phi > 0.0) || !e_t_t.is_finite() || !e_r_r.is_finite() || !e_th.is_finite() {
+    if spat_phi.partial_cmp(&0.0) != Some(Ordering::Greater)
+        || !e_t_t.is_finite()
+        || !e_r_r.is_finite()
+        || !e_th.is_finite()
+    {
         return Err(RaytraceError::CameraInside { r, horizon });
     }
     let e_ph_ph = 1.0 / spat_phi.sqrt();

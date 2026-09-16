@@ -9,8 +9,12 @@ metryka i geodezyjna żyją w `gr`, nie w sile chmury.
 - **Czarna dziura** (`bh/01`–`04`) — pierścienie `2M` / `3M` / `6M`; raytracer
   dysku, spin = 0, liczenie w tle.
 - **Następne działy** — tensory, równania Einsteina, PINN: pełny tekst,
-  silnik `gr` i animacja. Ostatnia lekcja wraca na mapę. Następna fala:
-  Kerr i siatka PDE (kroki 26–36).
+  silnik `gr` i animacja. Ostatnia lekcja wraca na mapę.
+- **Kerr** (`kerr/01`–`04`) — suwak `a/M`, lekcja 4 otwiera raytracer.
+- **Siatka PDE** (`pde/01`–`04`) — ciepło i fala 1D na węzłach, nie metryka.
+  Lekcja 4 wraca na mapę.
+
+Następna fala: CUDA/MPI i PINN na `g_μν`. Bez zderzeń czarnych dziur.
 
 Cztery chmury zostają:
 

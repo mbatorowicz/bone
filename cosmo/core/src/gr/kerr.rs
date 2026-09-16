@@ -24,6 +24,7 @@
 //! r+    = M + √(M² − a²)
 //! ```
 
+use std::cmp::Ordering;
 use std::fmt;
 
 use super::geodesic::{GeodesicState, STATE_LEN};
@@ -351,7 +352,7 @@ impl Kerr {
         let gtphi = self.g_t_phi(r, theta)?;
         let gphiphi = self.g_phi_phi(r, theta)?;
         let norm = gtt + 2.0 * gtphi * omega + gphiphi * omega * omega;
-        if !(norm < 0.0) || !norm.is_finite() {
+        if norm.partial_cmp(&0.0) != Some(Ordering::Less) || !norm.is_finite() {
             return Err(KerrGeoError::NoCircularOrbit { r, mass, spin });
         }
         let u_t = 1.0 / (-norm).sqrt();
@@ -560,12 +561,10 @@ fn disc(mass: f64, spin_like: f64) -> f64 {
     (mass * mass - spin_like * spin_like).max(0.0).sqrt()
 }
 
+type MetricPartials = ([[f64; 4]; 4], [[f64; 4]; 4]);
+
 /// Analityczne `∂_r g_μν` i `∂_θ g_μν`. `∂_t` i `∂_φ` są zerem.
-fn metric_partials(
-    bh: Kerr,
-    r: f64,
-    theta: f64,
-) -> Result<([[f64; 4]; 4], [[f64; 4]; 4]), KerrError> {
+fn metric_partials(bh: Kerr, r: f64, theta: f64) -> Result<MetricPartials, KerrError> {
     let m = bh.mass;
     let a = bh.spin;
     let s = theta.sin();
@@ -623,8 +622,8 @@ fn gamma_comp(
         }
     };
     let mut acc = 0.0;
-    for rho in 0..4 {
-        acc += gi[sigma][rho] * (d(mu, rho, nu) + d(nu, rho, mu) - d(rho, mu, nu));
+    for (rho, g_sigma_rho) in gi[sigma].iter().enumerate() {
+        acc += g_sigma_rho * (d(mu, rho, nu) + d(nu, rho, mu) - d(rho, mu, nu));
     }
     0.5 * acc
 }

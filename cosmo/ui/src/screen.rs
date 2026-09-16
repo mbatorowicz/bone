@@ -2,9 +2,9 @@
 //!
 //! Fizyka tu nie mieszka. Ten moduł wie tylko, *gdzie* jesteśmy i dokąd można
 //! przejść: trzy ścieżki rdzenia, trzy następne (tensory, Einstein, PINN),
-//! Kerr z animacją i siatka PDE jako stub, cztery chmury, stół zrzucania i
-//! raytracer. Tekst lekcji rysuje [`crate::lesson`]. Silnik chmury zostaje
-//! w panelu sim-labu.
+//! Kerr z suwakiem `a/M` i siatka PDE (ciepło, fala), cztery chmury, stół
+//! zrzucania i raytracer. Tekst lekcji rysuje [`crate::lesson`]. Silnik chmury
+//! zostaje w panelu sim-labu.
 
 use eframe::egui::{self, Color32, RichText, Ui};
 
@@ -299,6 +299,18 @@ pub enum Nav {
     Lab(LabId),
 }
 
+/// Kerr i siatka PDE są na mapie. Stub i „Bez Kerra” tu nie wracają.
+const MAP_LEAD: &str = concat!(
+    "Kurs: STW, geodezyjna, czarna dziura. Potem tensory, Einstein, PINN. ",
+    "Kerr ma suwak a/M; siatka PDE — ciepło i fala 1D.",
+);
+const MAP_NEXT_BLURB: &str = "Tekst, silnik i animacja. Ostatnia lekcja wraca na mapę.";
+const MAP_LATER_BLURB: &str = concat!(
+    "Kerr ma suwak a/M i drzwi do raytracera. ",
+    "Siatka PDE to ciepło i fala na węzłach, nie metryka. ",
+    "Ścieżka C startuje z a = 0.",
+);
+
 /// Pasek nad lekcją i laboratorium. Przycisk zawsze wraca na mapę.
 pub fn top_bar(ctx: &egui::Context, button: &str, caption: &str) -> bool {
     let mut clicked = false;
@@ -324,13 +336,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(12.0);
         ui.label(RichText::new("Bone — czasoprzestrzeń").size(22.0).strong());
-        ui.label(
-            RichText::new(
-                "Kurs: STW, geodezyjna, czarna dziura. Potem tensory, Einstein, PINN. Kerr ma obraz; siatka PDE — stub.",
-            )
-            .small()
-            .weak(),
-        );
+        ui.label(RichText::new(MAP_LEAD).small().weak());
         ui.add_space(16.0);
 
         ui.label(RichText::new("Ścieżki").strong());
@@ -350,11 +356,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
 
         ui.add_space(20.0);
         ui.label(RichText::new("Następne działy").strong());
-        ui.label(
-            RichText::new("Tekst, silnik i animacja. Ostatnia lekcja wraca na mapę. Bez Kerra.")
-                .small()
-                .weak(),
-        );
+        ui.label(RichText::new(MAP_NEXT_BLURB).small().weak());
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {
             for track in Track::NEXT {
@@ -366,13 +368,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
 
         ui.add_space(20.0);
         ui.label(RichText::new("Obrót i siatka").strong());
-        ui.label(
-            RichText::new(
-                "Kerr ma suwak a/M i drzwi do raytracera. Siatka PDE to jeszcze stub. Ścieżka C startuje z a = 0.",
-            )
-            .small()
-            .weak(),
-        );
+        ui.label(RichText::new(MAP_LATER_BLURB).small().weak());
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {
             for track in Track::LATER {
@@ -578,6 +574,23 @@ mod tests {
         );
         assert_eq!(Track::Kerr.first().opens_lab(), None);
         assert!(LabId::BlackHole.subtitle().contains("a/M"));
+    }
+
+    #[test]
+    fn map_captions_do_not_call_kerr_or_the_grid_a_stub() {
+        for caption in [MAP_LEAD, MAP_NEXT_BLURB, MAP_LATER_BLURB] {
+            assert!(!caption.contains("Bez Kerra"), "{caption}");
+            assert!(!caption.contains("stub"), "{caption}");
+        }
+        assert!(MAP_LATER_BLURB.contains("a/M"));
+        assert!(MAP_LATER_BLURB.contains("raytracer"));
+        assert!(!Track::Kerr.blurb().contains("stub"));
+        assert!(!Track::Pde.blurb().contains("stub"));
+        assert_eq!(
+            Track::Kerr.lessons().last().unwrap().opens_lab(),
+            Some(LabId::BlackHole)
+        );
+        assert_eq!(Track::Pde.lessons().last().unwrap().opens_lab(), None);
     }
 
     #[test]
