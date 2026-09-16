@@ -11,12 +11,14 @@
 //! obraz: piksel = geodezyjna zerowa wstecz, bez okna. [`tensor`] to algebra
 //! 4D: wektor, kowektor, maszyna (1,1), waga (0,2) i η Minkowskiego.
 //! [`einstein`] to Riemann, Ricci, `G_μν` i `T_μν` na Schwarzschildu.
+//! [`pinn`] to residual ciepła i fali oraz mała sieć bez biblioteki ML.
 
 pub mod christoffel;
 pub mod einstein;
 pub mod geodesic;
 pub mod lorentz;
 pub mod metric;
+pub mod pinn;
 pub mod raytrace;
 pub mod rk4;
 pub mod tensor;
@@ -29,5 +31,7 @@ pub use lorentz::{
     gamma_from_beta, Event, Superluminal,
 };
 pub use metric::{horizon_radius, isco_radius, photon_sphere_radius, MetricError, Schwarzschild};
+pub use pinn::{heat_exact, heat_loss, heat_residual, step_heat, wave_exact, wave_residual, Net};
 pub use raytrace::{Buffer, Hit, RaytraceError};
 pub use tensor::{Covector, Tensor02, Tensor11, Tensor20, Vector};
+
