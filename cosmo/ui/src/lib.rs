@@ -646,6 +646,28 @@ mod tests {
     }
 
     #[test]
+    fn later_paths_open_lessons_and_return_to_the_map() {
+        let mut app = App::default();
+        for track in screen::Track::LATER {
+            let mut id = track.first();
+            app.open_lesson(id);
+            assert_eq!(app.screen, Screen::Lesson(id));
+            assert!(app.lesson.playing);
+            let mut hops = 0u8;
+            while let Some(next) = id.next() {
+                app.open_lesson(next);
+                id = next;
+                hops += 1;
+            }
+            assert_eq!(hops, track.lesson_count() - 1);
+            assert_eq!(lesson::step(id, true), lesson::Action::Map);
+            assert_eq!(id.opens_lab(), None);
+            app.back_to_map();
+            assert_eq!(app.screen, Screen::Map);
+        }
+    }
+
+    #[test]
     fn opening_blackhole_stops_a_cloud_run() {
         let mut app = App::default();
         app.open_lab(LabId::Nbody);

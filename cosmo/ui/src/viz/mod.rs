@@ -8,7 +8,8 @@
 //! Ścieżka czarnej dziury 1–4: pierścienie, pęk i Einstein w 2D ([`rings`]).
 //! C3 i C4 otwierają laboratorium raytracera ([`blackhole`]): klatka w tle.
 //! Tensory, Einstein i PINN: algebra, pole i residual — liczby z `gr`,
-//! obraz w [`tensors`], [`einstein`], [`pinn`]. Kerr zostaje za mapą.
+//! obraz w [`tensors`], [`einstein`], [`pinn`]. Kerr i siatka PDE są na mapie
+//! jako stuby: obraz to placeholder, bez `gr::kerr` i bez suwaka `a`.
 
 pub mod blackhole;
 pub mod clocks;
@@ -110,6 +111,7 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
             pinn::draw(ui, id.index, playback);
             Outcome::Drawn
         }
+        // Kerr / PDE: stub na mapie, obraz to placeholder (kroki 31 i 35).
         _ => Outcome::Placeholder,
     }
 }
@@ -127,9 +129,24 @@ mod tests {
                 ctx.begin_pass(eframe::egui::RawInput::default());
                 eframe::egui::CentralPanel::default().show(&ctx, |ui| {
                     let mut playback = Playback::default();
+                    assert_eq!(draw(ui, id, &mut playback), Outcome::Drawn, "{}", id.slug());
+                });
+                let _ = ctx.end_pass();
+            }
+        }
+    }
+
+    #[test]
+    fn later_tracks_keep_the_placeholder() {
+        for track in Track::LATER {
+            for id in track.lessons() {
+                let ctx = eframe::egui::Context::default();
+                ctx.begin_pass(eframe::egui::RawInput::default());
+                eframe::egui::CentralPanel::default().show(&ctx, |ui| {
+                    let mut playback = Playback::default();
                     assert_eq!(
                         draw(ui, id, &mut playback),
-                        Outcome::Drawn,
+                        Outcome::Placeholder,
                         "{}",
                         id.slug()
                     );

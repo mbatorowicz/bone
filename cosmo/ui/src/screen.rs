@@ -2,8 +2,9 @@
 //!
 //! Fizyka tu nie mieszka. Ten moduł wie tylko, *gdzie* jesteśmy i dokąd można
 //! przejść: trzy ścieżki rdzenia, trzy następne (tensory, Einstein, PINN),
-//! cztery chmury, stół zrzucania i raytracer. Tekst lekcji rysuje
-//! [`crate::lesson`]. Silnik chmury zostaje w panelu sim-labu.
+//! dwie późniejsze (Kerr, siatka PDE), cztery chmury, stół zrzucania i
+//! raytracer. Tekst lekcji rysuje [`crate::lesson`]. Silnik chmury zostaje
+//! w panelu sim-labu.
 
 use eframe::egui::{self, Color32, RichText, Ui};
 
@@ -27,18 +28,23 @@ pub enum Track {
     Tensor,
     Einstein,
     Pinn,
+    Kerr,
+    Pde,
 }
 
 impl Track {
     pub const CORE: [Track; 3] = [Track::Stw, Track::Geo, Track::Bh];
     pub const NEXT: [Track; 3] = [Track::Tensor, Track::Einstein, Track::Pinn];
-    pub const ALL: [Track; 6] = [
+    pub const LATER: [Track; 2] = [Track::Kerr, Track::Pde];
+    pub const ALL: [Track; 8] = [
         Track::Stw,
         Track::Geo,
         Track::Bh,
         Track::Tensor,
         Track::Einstein,
         Track::Pinn,
+        Track::Kerr,
+        Track::Pde,
     ];
 
     pub fn slug(self) -> &'static str {
@@ -49,6 +55,8 @@ impl Track {
             Self::Tensor => "ten",
             Self::Einstein => "ein",
             Self::Pinn => "pinn",
+            Self::Kerr => "kerr",
+            Self::Pde => "pde",
         }
     }
 
@@ -60,6 +68,8 @@ impl Track {
             Self::Tensor => "Tensory",
             Self::Einstein => "Równania Einsteina",
             Self::Pinn => "PINN",
+            Self::Kerr => "Kerr",
+            Self::Pde => "Siatka PDE",
         }
     }
 
@@ -75,6 +85,8 @@ impl Track {
                 "Masa zgina przestrzeń. Schwarzschild jako rozwiązanie, nie zgadywanie."
             }
             Self::Pinn => "Sieć zgaduje funkcję; błąd to residual równania, nie etykieta.",
+            Self::Kerr => "Obrót zgina czas. a = 0 to stara mata. Suwak a wejdzie później.",
+            Self::Pde => "Węzły zamiast suwaków PINN. Ciepło i fala 1D — nie metryka.",
         }
     }
 
@@ -86,6 +98,7 @@ impl Track {
             Self::Tensor => 5,
             Self::Einstein => 4,
             Self::Pinn => 4,
+            Self::Kerr | Self::Pde => 4,
         }
     }
 
@@ -108,6 +121,8 @@ impl Track {
             Self::Tensor => Color32::from_rgb(190, 150, 220),
             Self::Einstein => Color32::from_rgb(220, 130, 110),
             Self::Pinn => Color32::from_rgb(120, 200, 190),
+            Self::Kerr => Color32::from_rgb(230, 140, 80),
+            Self::Pde => Color32::from_rgb(140, 165, 210),
         }
     }
 }
@@ -156,6 +171,14 @@ impl LessonId {
             (Track::Pinn, 2) => "Residual, nie etykieta",
             (Track::Pinn, 3) => "Ciepło i fala",
             (Track::Pinn, 4) => "Dlaczego Einstein jest drogi",
+            (Track::Kerr, 1) => "Wleczenie układu",
+            (Track::Kerr, 2) => "Ergosphera i horyzont",
+            (Track::Kerr, 3) => "Pierścienie pękają",
+            (Track::Kerr, 4) => "Cień nie na środku",
+            (Track::Pde, 1) => "Węzły zamiast suwaków",
+            (Track::Pde, 2) => "Ciepło na siatce",
+            (Track::Pde, 3) => "Fala na siatce",
+            (Track::Pde, 4) => "Dlaczego Einstein na siatce jest drogi",
             _ => "Lekcja",
         }
     }
@@ -301,9 +324,11 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(12.0);
         ui.label(RichText::new("Bone — czasoprzestrzeń").size(22.0).strong());
         ui.label(
-            RichText::new("Kurs: STW, geodezyjna, czarna dziura. Potem tensory, Einstein, PINN.")
-                .small()
-                .weak(),
+            RichText::new(
+                "Kurs: STW, geodezyjna, czarna dziura. Potem tensory, Einstein, PINN. Obrót i siatka — stuby.",
+            )
+            .small()
+            .weak(),
         );
         ui.add_space(16.0);
 
@@ -332,6 +357,24 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {
             for track in Track::NEXT {
+                if let Some(next) = path_card(ui, track) {
+                    nav = Some(next);
+                }
+            }
+        });
+
+        ui.add_space(20.0);
+        ui.label(RichText::new("Obrót i siatka").strong());
+        ui.label(
+            RichText::new(
+                "Stuby i placeholder. Ostatnia lekcja wraca na mapę. Raytracer nadal spin = 0.",
+            )
+            .small()
+            .weak(),
+        );
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            for track in Track::LATER {
                 if let Some(next) = path_card(ui, track) {
                     nav = Some(next);
                 }
@@ -421,9 +464,12 @@ mod tests {
         assert_eq!(Track::Tensor.lesson_count(), 5);
         assert_eq!(Track::Einstein.lesson_count(), 4);
         assert_eq!(Track::Pinn.lesson_count(), 4);
+        assert_eq!(Track::Kerr.lesson_count(), 4);
+        assert_eq!(Track::Pde.lesson_count(), 4);
         assert_eq!(Track::CORE.len(), 3);
         assert_eq!(Track::NEXT.len(), 3);
-        assert_eq!(Track::ALL.len(), 6);
+        assert_eq!(Track::LATER.len(), 2);
+        assert_eq!(Track::ALL.len(), 8);
     }
 
     #[test]
@@ -437,7 +483,7 @@ mod tests {
                 assert!(slugs.insert(lesson.slug()), "duplikat {}", lesson.slug());
             }
         }
-        assert_eq!(slugs.len(), 7 + 6 + 4 + 5 + 4 + 4);
+        assert_eq!(slugs.len(), 7 + 6 + 4 + 5 + 4 + 4 + 4 + 4);
         assert_eq!(
             LessonId {
                 track: Track::Stw,
@@ -502,11 +548,28 @@ mod tests {
             .slug(),
             "pinn/04"
         );
-        for track in Track::NEXT {
+        assert_eq!(
+            LessonId {
+                track: Track::Kerr,
+                index: 4
+            }
+            .slug(),
+            "kerr/04"
+        );
+        assert_eq!(
+            LessonId {
+                track: Track::Pde,
+                index: 1
+            }
+            .slug(),
+            "pde/01"
+        );
+        for track in Track::NEXT.iter().chain(Track::LATER.iter()).copied() {
             assert_eq!(track.first().opens_lab(), None);
             assert_eq!(track.lessons().last().unwrap().opens_lab(), None);
             assert_eq!(track.lessons().last().unwrap().next(), None);
         }
+        assert!(LabId::BlackHole.subtitle().contains("spin = 0"));
     }
 
     #[test]

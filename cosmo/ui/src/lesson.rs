@@ -8,6 +8,7 @@
 //! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–2: pierścienie i pęk
 //! w 2D. C3 i C4 otwierają laboratorium raytracera (klatka w tle).
 //! Tensory / Einstein / PINN: algebra, pole i residual — obraz z `gr`, nie stub.
+//! Kerr i siatka PDE: stub i placeholder; ostatnia lekcja wraca na mapę, bez labu.
 
 use std::f32::consts::TAU;
 
@@ -118,6 +119,14 @@ pub fn source(id: LessonId) -> &'static str {
         (Track::Pinn, 2) => lesson_md!("pinn/02.md"),
         (Track::Pinn, 3) => lesson_md!("pinn/03.md"),
         (Track::Pinn, 4) => lesson_md!("pinn/04.md"),
+        (Track::Kerr, 1) => lesson_md!("kerr/01.md"),
+        (Track::Kerr, 2) => lesson_md!("kerr/02.md"),
+        (Track::Kerr, 3) => lesson_md!("kerr/03.md"),
+        (Track::Kerr, 4) => lesson_md!("kerr/04.md"),
+        (Track::Pde, 1) => lesson_md!("pde/01.md"),
+        (Track::Pde, 2) => lesson_md!("pde/02.md"),
+        (Track::Pde, 3) => lesson_md!("pde/03.md"),
+        (Track::Pde, 4) => lesson_md!("pde/04.md"),
         _ => "",
     }
 }
@@ -449,7 +458,7 @@ let x = 1;
                 seen += 1;
             }
         }
-        assert_eq!(seen, 7 + 6 + 4 + 5 + 4 + 4);
+        assert_eq!(seen, 7 + 6 + 4 + 5 + 4 + 4 + 4 + 4);
         assert!(parse(source(Track::Stw.lessons().nth(5).expect("stw/06")))
             .iter()
             .any(|b| matches!(b, Block::Code { .. })));
@@ -797,7 +806,7 @@ let x = 1;
 
     #[test]
     fn next_tracks_walk_to_the_map_without_a_lab() {
-        for track in Track::NEXT {
+        for track in Track::NEXT.iter().chain(Track::LATER.iter()).copied() {
             let mut id = track.first();
             let mut hops = 0u8;
             loop {
