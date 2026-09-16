@@ -4,7 +4,7 @@
 //!
 //! - [`screen`] — mapa, identyfikatory ścieżek i labów,
 //! - [`lesson`] — ekran 60/40, parser Markdown, play/pauza,
-//! - [`viz`] — ruchomy obraz lekcji (STW, geodezyjna, czarna dziura 2D; zrzucanie to osobny lab),
+//! - [`viz`] — ruchomy obraz lekcji (STW, geodezyjna, czarna dziura 2D; zrzucanie i raytracer to osobne laby),
 //! - [`camera`] — obrót, przesunięcie i przybliżenie, czysta geometria,
 //! - [`render`] — chmura punktów na obraz, czysta arytmetyka,
 //! - [`panels`] — formularz i tabela laboratorium, jedyne miejsce formularza `egui`,
@@ -36,7 +36,7 @@ use crate::panels::{Action, Setup};
 use crate::replay::Replay;
 use crate::screen::{LabId, LessonId, Nav, Screen};
 use crate::simulation::{Mode, View};
-use crate::viz::geodesics;
+use crate::viz::{blackhole, geodesics};
 use bone_core::session::Session;
 
 /// Ile klatek odczekać na najniższym ustawieniu szybkości.
@@ -50,6 +50,7 @@ pub struct App {
     screen: Screen,
     lesson: Playback,
     geo_lab: geodesics::Lab,
+    bh_lab: blackhole::Lab,
     setup: Setup,
     view: Option<View>,
     running: bool,
@@ -68,6 +69,7 @@ impl Default for App {
             screen: Screen::Map,
             lesson: Playback::default(),
             geo_lab: geodesics::Lab::default(),
+            bh_lab: blackhole::Lab::default(),
             setup: Setup::default(),
             view: None,
             running: false,
@@ -244,6 +246,10 @@ impl App {
             }
             self.setup.apply_stw_nbody_door();
         }
+        if lab == LabId::BlackHole {
+            self.bh_lab
+                .sync_from_lesson(self.lesson.mass, self.lesson.spin);
+        }
         self.open_lab(lab);
     }
 
@@ -373,6 +379,12 @@ impl eframe::App for App {
                     ctx.request_repaint();
                 }
             }
+            Screen::Lab(LabId::BlackHole) => {
+                self.bh_lab.poll();
+                if self.bh_lab.is_busy() {
+                    ctx.request_repaint();
+                }
+            }
             Screen::Lab(_) => {
                 self.tick();
                 if self.running {
@@ -422,6 +434,8 @@ impl eframe::App for App {
                 }
                 if lab == LabId::Geodesics {
                     geodesics::draw_lab(ctx, &mut self.geo_lab);
+                } else if lab == LabId::BlackHole {
+                    blackhole::draw_lab(ctx, &mut self.bh_lab);
                 } else {
                     self.draw_lab(ctx);
                 }
@@ -514,7 +528,7 @@ mod tests {
             if let Some(mode) = lab.mode() {
                 assert_eq!(app.setup.mode, mode);
             } else {
-                assert_eq!(lab, LabId::Geodesics);
+                assert!(matches!(lab, LabId::Geodesics | LabId::BlackHole));
             }
             assert_ne!(app.status, "Zatrzymano.");
             app.back_to_map();
@@ -579,6 +593,45 @@ mod tests {
         app.back_to_map();
         assert_eq!(app.screen, Screen::Map);
         assert!(!app.running);
+    }
+
+    #[test]
+    fn bh_path_walks_into_the_raytrace_lab() {
+        let mut app = App::default();
+        let mut id = screen::Track::Bh.first();
+        app.open_lesson(id);
+        let mut hops = 0;
+        while let Some(next) = id.next() {
+            app.open_lesson(next);
+            id = next;
+            hops += 1;
+        }
+        assert_eq!(hops, 3);
+        assert_eq!(id.index, 4);
+        assert_eq!(
+            lesson::step(id, true),
+            lesson::Action::Lab(LabId::BlackHole)
+        );
+        app.lesson.mass = 0.8;
+        app.lesson.spin = 1.1;
+        app.open_course_lab(LabId::BlackHole);
+        assert_eq!(app.screen, Screen::Lab(LabId::BlackHole));
+        assert!((app.bh_lab.mass - 0.8).abs() < 1e-15);
+        assert!((app.bh_lab.incline - 1.1).abs() < 1e-6);
+        app.back_to_map();
+        assert_eq!(app.screen, Screen::Map);
+        assert!(!app.running);
+    }
+
+    #[test]
+    fn opening_blackhole_stops_a_cloud_run() {
+        let mut app = App::default();
+        app.open_lab(LabId::Nbody);
+        app.running = true;
+        app.open_lab(LabId::BlackHole);
+        assert!(!app.running);
+        assert_eq!(app.screen, Screen::Lab(LabId::BlackHole));
+        assert_eq!(LabId::BlackHole.mode(), None);
     }
 
     #[test]

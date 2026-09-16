@@ -1,7 +1,7 @@
 //! Mapa kursu i identyfikatory lekcji oraz laboratoriów.
 //!
 //! Fizyka tu nie mieszka. Ten moduł wie tylko, *gdzie* jesteśmy i dokąd można
-//! przejść: trzy ścieżki, cztery chmury i stół zrzucania geodezyjnych. Tekst
+//! przejść: trzy ścieżki, cztery chmury, stół zrzucania i raytracer. Tekst
 //! lekcji rysuje [`crate::lesson`]. Silnik chmury zostaje w panelu sim-labu.
 
 use eframe::egui::{self, Color32, RichText, Ui};
@@ -131,17 +131,18 @@ impl LessonId {
         })
     }
 
-    /// Ostatnia lekcja ścieżki A otwiera chmurę; B6 — stół zrzucania.
+    /// A7 → N-ciała; B6 → zrzucanie; C4 → raytracer. C3 ma drzwi w obrazie.
     pub fn opens_lab(self) -> Option<LabId> {
         match (self.track, self.index) {
             (Track::Stw, 7) => Some(LabId::Nbody),
             (Track::Geo, 6) => Some(LabId::Geodesics),
+            (Track::Bh, 4) => Some(LabId::BlackHole),
             _ => None,
         }
     }
 }
 
-/// Laboratoria na mapie. Chmury mają [`Mode`]; zrzucanie rysuje równik, nie punkty.
+/// Laboratoria na mapie. Chmury mają [`Mode`]; zrzucanie i raytracer — nie.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LabId {
     Nbody,
@@ -149,15 +150,17 @@ pub enum LabId {
     Particles,
     Atoms,
     Geodesics,
+    BlackHole,
 }
 
 impl LabId {
-    pub const ALL: [LabId; 5] = [
+    pub const ALL: [LabId; 6] = [
         LabId::Nbody,
         LabId::Cosmology,
         LabId::Particles,
         LabId::Atoms,
         LabId::Geodesics,
+        LabId::BlackHole,
     ];
 
     pub const SIM: [LabId; 4] = [
@@ -177,7 +180,7 @@ impl LabId {
             Self::Cosmology => Some(Mode::Cosmological),
             Self::Particles => Some(Mode::Particles),
             Self::Atoms => Some(Mode::Atoms),
-            Self::Geodesics => None,
+            Self::Geodesics | Self::BlackHole => None,
         }
     }
 
@@ -197,6 +200,7 @@ impl LabId {
             Self::Particles => Mode::Particles.label(),
             Self::Atoms => Mode::Atoms.label(),
             Self::Geodesics => "Geodezyjne",
+            Self::BlackHole => "Raytracer",
         }
     }
 
@@ -207,6 +211,7 @@ impl LabId {
             Self::Particles => Mode::Particles.subtitle(),
             Self::Atoms => Mode::Atoms.subtitle(),
             Self::Geodesics => "zrzut w równiku Schwarzschilda",
+            Self::BlackHole => "obraz dysku · spin = 0",
         }
     }
 
@@ -214,6 +219,7 @@ impl LabId {
         match self {
             Self::Nbody => "Laboratorium N-ciała",
             Self::Geodesics => "Laboratorium geodezyjnych",
+            Self::BlackHole => "Laboratorium raytracera",
             _ => "Laboratorium",
         }
     }
@@ -279,7 +285,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.label(RichText::new("Laboratoria").strong());
         ui.label(
             RichText::new(
-                "Cztery chmury jak wcześniej i stół zrzucania: foton albo cząstka w równiku.",
+                "Cztery chmury, stół zrzucania i raytracer: dysk Schwarzschilda, spin = 0.",
             )
             .small()
             .weak(),
@@ -419,6 +425,11 @@ mod tests {
             Some(LabId::Geodesics)
         );
         assert_eq!(Track::Geo.first().opens_lab(), None);
+        assert_eq!(
+            Track::Bh.lessons().last().unwrap().opens_lab(),
+            Some(LabId::BlackHole)
+        );
+        assert_eq!(Track::Bh.first().opens_lab(), None);
     }
 
     #[test]
@@ -431,7 +442,7 @@ mod tests {
             assert!(!lab.label().is_empty());
             assert!(!lab.subtitle().is_empty());
         }
-        assert_eq!(LabId::ALL.len(), 5);
+        assert_eq!(LabId::ALL.len(), 6);
         assert!(!LabId::Geodesics.is_sim());
         assert_eq!(LabId::Geodesics.mode(), None);
         assert_eq!(LabId::Geodesics.label(), "Geodezyjne");
@@ -440,6 +451,11 @@ mod tests {
             LabId::Geodesics.course_button(),
             "Laboratorium geodezyjnych"
         );
+        assert!(!LabId::BlackHole.is_sim());
+        assert_eq!(LabId::BlackHole.mode(), None);
+        assert_eq!(LabId::BlackHole.label(), "Raytracer");
+        assert!(!LabId::BlackHole.subtitle().is_empty());
+        assert_eq!(LabId::BlackHole.course_button(), "Laboratorium raytracera");
     }
 
     #[test]

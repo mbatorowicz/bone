@@ -6,8 +6,9 @@
 //! Ścieżka geodezyjna 1–5: kula, gumowa siatka, film RK4 vs Euler.
 //! Lekcja 6 otwiera stół zrzucania; sam równik rysuje [`geodesics`].
 //! Ścieżka czarnej dziury 1–4: pierścienie, pęk i Einstein w 2D ([`rings`]).
-//! Laboratorium raytracera — krok 14 — tu jeszcze nie wchodzi.
+//! C3 i C4 otwierają laboratorium raytracera ([`blackhole`]): klatka w tle.
 
+pub mod blackhole;
 pub mod clocks;
 pub mod geodesics;
 pub mod metric_grid;
@@ -77,9 +78,18 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
                 Outcome::Drawn
             }
         }
-        (Track::Bh, 1..=4) => {
+        (Track::Bh, 1..=2) => {
             rings::draw(ui, id.index, playback);
             Outcome::Drawn
+        }
+        (Track::Bh, 3 | 4) => {
+            let open = blackhole::draw_ray_door(ui);
+            rings::draw(ui, id.index, playback);
+            if open {
+                Outcome::OpenLab(LabId::BlackHole)
+            } else {
+                Outcome::Drawn
+            }
         }
         _ => Outcome::Placeholder,
     }

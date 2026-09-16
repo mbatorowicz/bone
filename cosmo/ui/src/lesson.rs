@@ -5,8 +5,8 @@
 //! spada do akapitu zamiast wywalić okno. Układ 60/40 i play/pauza są wspólne.
 //! STW 1–6 rysuje [`crate::viz`]; lekcja 7 otwiera laboratorium N-ciał.
 //! Geodezyjna 1–5 też: kula, siatka z suwakiem M, film RK4 vs Euler.
-//! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–4: pierścienie i pęk
-//! w 2D; raytracer pikseli zostaje na laboratorium.
+//! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–2: pierścienie i pęk
+//! w 2D. C3 i C4 otwierają laboratorium raytracera (klatka w tle).
 
 use std::f32::consts::TAU;
 
@@ -68,7 +68,7 @@ impl Playback {
     }
 }
 
-/// Wstecz / Dalej po ścieżce. A7 otwiera N-ciała; B6 — geodezyjne; brak sąsiada = mapa.
+/// Wstecz / Dalej po ścieżce. A7 otwiera N-ciała; B6 — geodezyjne; C4 — raytracer.
 pub fn step(id: LessonId, forward: bool) -> Action {
     if forward {
         if let Some(lab) = id.opens_lab() {
@@ -591,7 +591,7 @@ let x = 1;
     }
 
     #[test]
-    fn bh_next_walks_to_the_fourth_lesson_then_map() {
+    fn bh_next_walks_to_the_fourth_lesson_then_raytracer() {
         let mut id = Track::Bh.first();
         let mut hops = 0;
         loop {
@@ -600,16 +600,24 @@ let x = 1;
                     id = next;
                     hops += 1;
                 }
-                Action::Lab(_) => panic!("ścieżka C nie otwiera labu w kroku 13"),
-                Action::Map => break,
+                Action::Lab(lab) => {
+                    assert_eq!(lab, LabId::BlackHole);
+                    break;
+                }
+                Action::Map => panic!("C4 miało otworzyć raytracer, nie mapę"),
                 Action::None => panic!("krok nie może być pusty"),
             }
         }
         assert_eq!(hops, 3);
         assert_eq!(id.index, 4);
-        assert_eq!(step(id, true), Action::Map);
+        assert_eq!(step(id, true), Action::Lab(LabId::BlackHole));
         assert_eq!(step(Track::Bh.first(), false), Action::Map);
-        assert_eq!(id.opens_lab(), None);
+        assert_eq!(id.opens_lab(), Some(LabId::BlackHole));
+        assert_eq!(
+            Track::Bh.lessons().nth(2).unwrap().opens_lab(),
+            None,
+            "C3 otwiera lab tylko przyciskiem w obrazie"
+        );
     }
 
     #[test]
