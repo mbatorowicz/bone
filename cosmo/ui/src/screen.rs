@@ -1,8 +1,9 @@
 //! Mapa kursu i identyfikatory lekcji oraz laboratoriów.
 //!
 //! Fizyka tu nie mieszka. Ten moduł wie tylko, *gdzie* jesteśmy i dokąd można
-//! przejść: trzy ścieżki, cztery chmury, stół zrzucania i raytracer. Tekst
-//! lekcji rysuje [`crate::lesson`]. Silnik chmury zostaje w panelu sim-labu.
+//! przejść: trzy ścieżki rdzenia, trzy następne (tensory, Einstein, PINN),
+//! cztery chmury, stół zrzucania i raytracer. Tekst lekcji rysuje
+//! [`crate::lesson`]. Silnik chmury zostaje w panelu sim-labu.
 
 use eframe::egui::{self, Color32, RichText, Ui};
 
@@ -23,16 +24,31 @@ pub enum Track {
     Stw,
     Geo,
     Bh,
+    Tensor,
+    Einstein,
+    Pinn,
 }
 
 impl Track {
-    pub const ALL: [Track; 3] = [Track::Stw, Track::Geo, Track::Bh];
+    pub const CORE: [Track; 3] = [Track::Stw, Track::Geo, Track::Bh];
+    pub const NEXT: [Track; 3] = [Track::Tensor, Track::Einstein, Track::Pinn];
+    pub const ALL: [Track; 6] = [
+        Track::Stw,
+        Track::Geo,
+        Track::Bh,
+        Track::Tensor,
+        Track::Einstein,
+        Track::Pinn,
+    ];
 
     pub fn slug(self) -> &'static str {
         match self {
             Self::Stw => "stw",
             Self::Geo => "geo",
             Self::Bh => "bh",
+            Self::Tensor => "ten",
+            Self::Einstein => "ein",
+            Self::Pinn => "pinn",
         }
     }
 
@@ -41,6 +57,9 @@ impl Track {
             Self::Stw => "Szczególna teoria względności",
             Self::Geo => "Geodezyjna",
             Self::Bh => "Czarna dziura",
+            Self::Tensor => "Tensory",
+            Self::Einstein => "Równania Einsteina",
+            Self::Pinn => "PINN",
         }
     }
 
@@ -51,6 +70,11 @@ impl Track {
                 "Idź prosto na zakrzywionej przestrzeni. Schwarzschild słowami, bez Γ na start."
             }
             Self::Bh => "Pierścienie 2M / 3M / 6M, soczewkowanie, obraz dysku.",
+            Self::Tensor => "Język OTW: od strzałki do skrzynki z wieloma wejściami.",
+            Self::Einstein => {
+                "Masa zgina przestrzeń. Schwarzschild jako rozwiązanie, nie zgadywanie."
+            }
+            Self::Pinn => "Sieć zgaduje funkcję; błąd to residual równania, nie etykieta.",
         }
     }
 
@@ -59,6 +83,9 @@ impl Track {
             Self::Stw => 7,
             Self::Geo => 6,
             Self::Bh => 4,
+            Self::Tensor => 5,
+            Self::Einstein => 4,
+            Self::Pinn => 4,
         }
     }
 
@@ -78,6 +105,9 @@ impl Track {
             Self::Stw => Color32::from_rgb(120, 180, 220),
             Self::Geo => Color32::from_rgb(160, 200, 140),
             Self::Bh => Color32::from_rgb(220, 180, 90),
+            Self::Tensor => Color32::from_rgb(190, 150, 220),
+            Self::Einstein => Color32::from_rgb(220, 130, 110),
+            Self::Pinn => Color32::from_rgb(120, 200, 190),
         }
     }
 }
@@ -113,6 +143,19 @@ impl LessonId {
             (Track::Bh, 2) => "Soczewkowanie i pierścień Einsteina",
             (Track::Bh, 3) => "Raytracer: kamera i dysk",
             (Track::Bh, 4) => "Suwaki masy i nachylenia",
+            (Track::Tensor, 1) => "Liczba, wektor, obrót",
+            (Track::Tensor, 2) => "Macierz jako maszyna",
+            (Track::Tensor, 3) => "Tensor — skrzynka z wejściami",
+            (Track::Tensor, 4) => "Metryka, którą już znasz",
+            (Track::Tensor, 5) => "Wskaźniki w górę i w dół",
+            (Track::Einstein, 1) => "Masa zgina przestrzeń",
+            (Track::Einstein, 2) => "Lewa strona: krzywizna",
+            (Track::Einstein, 3) => "Prawa strona: energia",
+            (Track::Einstein, 4) => "Próżnia i Schwarzschild",
+            (Track::Pinn, 1) => "Sieć zgaduje funkcję",
+            (Track::Pinn, 2) => "Residual, nie etykieta",
+            (Track::Pinn, 3) => "Ciepło i fala",
+            (Track::Pinn, 4) => "Dlaczego Einstein jest drogi",
             _ => "Lekcja",
         }
     }
@@ -258,7 +301,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(12.0);
         ui.label(RichText::new("Bone — czasoprzestrzeń").size(22.0).strong());
         ui.label(
-            RichText::new("Kurs: szczególna teoria względności, geodezyjna, czarna dziura")
+            RichText::new("Kurs: STW, geodezyjna, czarna dziura. Potem tensory, Einstein, PINN.")
                 .small()
                 .weak(),
         );
@@ -266,15 +309,29 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
 
         ui.label(RichText::new("Ścieżki").strong());
         ui.label(
-            RichText::new(
-                "Każda karta otwiera lekcje. Tekst, animacja i drzwi do laboratorium.",
-            )
-            .small()
-            .weak(),
+            RichText::new("Każda karta otwiera lekcje. Tekst, animacja i drzwi do laboratorium.")
+                .small()
+                .weak(),
         );
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui| {
-            for track in Track::ALL {
+            for track in Track::CORE {
+                if let Some(next) = path_card(ui, track) {
+                    nav = Some(next);
+                }
+            }
+        });
+
+        ui.add_space(20.0);
+        ui.label(RichText::new("Następne działy").strong());
+        ui.label(
+            RichText::new("Stub i placeholder — pełny tekst i fizyka później. Bez Kerra.")
+                .small()
+                .weak(),
+        );
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            for track in Track::NEXT {
                 if let Some(next) = path_card(ui, track) {
                     nav = Some(next);
                 }
@@ -299,12 +356,6 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
             }
         });
 
-        ui.add_space(24.0);
-        ui.label(
-            RichText::new("Następne działy (później): równania Einsteina, Kerr, PINN.")
-                .small()
-                .weak(),
-        );
         ui.add_space(12.0);
     });
     nav
@@ -363,11 +414,16 @@ mod tests {
     }
 
     #[test]
-    fn three_tracks_have_the_planned_lesson_counts() {
+    fn core_and_next_tracks_have_the_planned_lesson_counts() {
         assert_eq!(Track::Stw.lesson_count(), 7);
         assert_eq!(Track::Geo.lesson_count(), 6);
         assert_eq!(Track::Bh.lesson_count(), 4);
-        assert_eq!(Track::ALL.len(), 3);
+        assert_eq!(Track::Tensor.lesson_count(), 5);
+        assert_eq!(Track::Einstein.lesson_count(), 4);
+        assert_eq!(Track::Pinn.lesson_count(), 4);
+        assert_eq!(Track::CORE.len(), 3);
+        assert_eq!(Track::NEXT.len(), 3);
+        assert_eq!(Track::ALL.len(), 6);
     }
 
     #[test]
@@ -381,7 +437,7 @@ mod tests {
                 assert!(slugs.insert(lesson.slug()), "duplikat {}", lesson.slug());
             }
         }
-        assert_eq!(slugs.len(), 7 + 6 + 4);
+        assert_eq!(slugs.len(), 7 + 6 + 4 + 5 + 4 + 4);
         assert_eq!(
             LessonId {
                 track: Track::Stw,
@@ -430,6 +486,27 @@ mod tests {
             Some(LabId::BlackHole)
         );
         assert_eq!(Track::Bh.first().opens_lab(), None);
+        assert_eq!(
+            LessonId {
+                track: Track::Tensor,
+                index: 5
+            }
+            .slug(),
+            "ten/05"
+        );
+        assert_eq!(
+            LessonId {
+                track: Track::Pinn,
+                index: 4
+            }
+            .slug(),
+            "pinn/04"
+        );
+        for track in Track::NEXT {
+            assert_eq!(track.first().opens_lab(), None);
+            assert_eq!(track.lessons().last().unwrap().opens_lab(), None);
+            assert_eq!(track.lessons().last().unwrap().next(), None);
+        }
     }
 
     #[test]

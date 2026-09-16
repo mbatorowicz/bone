@@ -7,6 +7,7 @@
 //! Lekcja 6 otwiera stół zrzucania; sam równik rysuje [`geodesics`].
 //! Ścieżka czarnej dziury 1–4: pierścienie, pęk i Einstein w 2D ([`rings`]).
 //! C3 i C4 otwierają laboratorium raytracera ([`blackhole`]): klatka w tle.
+//! Tensory, Einstein i PINN zostają przy placeholdrze — krok 16, bez fizyki.
 
 pub mod blackhole;
 pub mod clocks;

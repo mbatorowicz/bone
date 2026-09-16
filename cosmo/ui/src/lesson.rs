@@ -7,6 +7,7 @@
 //! Geodezyjna 1–5 też: kula, siatka z suwakiem M, film RK4 vs Euler.
 //! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–2: pierścienie i pęk
 //! w 2D. C3 i C4 otwierają laboratorium raytracera (klatka w tle).
+//! Tensory / Einstein / PINN: stub i placeholder, bez nowej fizyki.
 
 use std::f32::consts::TAU;
 
@@ -99,6 +100,19 @@ pub fn source(id: LessonId) -> &'static str {
         (Track::Bh, 2) => lesson_md!("bh/02.md"),
         (Track::Bh, 3) => lesson_md!("bh/03.md"),
         (Track::Bh, 4) => lesson_md!("bh/04.md"),
+        (Track::Tensor, 1) => lesson_md!("ten/01.md"),
+        (Track::Tensor, 2) => lesson_md!("ten/02.md"),
+        (Track::Tensor, 3) => lesson_md!("ten/03.md"),
+        (Track::Tensor, 4) => lesson_md!("ten/04.md"),
+        (Track::Tensor, 5) => lesson_md!("ten/05.md"),
+        (Track::Einstein, 1) => lesson_md!("ein/01.md"),
+        (Track::Einstein, 2) => lesson_md!("ein/02.md"),
+        (Track::Einstein, 3) => lesson_md!("ein/03.md"),
+        (Track::Einstein, 4) => lesson_md!("ein/04.md"),
+        (Track::Pinn, 1) => lesson_md!("pinn/01.md"),
+        (Track::Pinn, 2) => lesson_md!("pinn/02.md"),
+        (Track::Pinn, 3) => lesson_md!("pinn/03.md"),
+        (Track::Pinn, 4) => lesson_md!("pinn/04.md"),
         _ => "",
     }
 }
@@ -430,7 +444,7 @@ let x = 1;
                 seen += 1;
             }
         }
-        assert_eq!(seen, 7 + 6 + 4);
+        assert_eq!(seen, 7 + 6 + 4 + 5 + 4 + 4);
         assert!(parse(source(Track::Stw.lessons().nth(5).expect("stw/06")))
             .iter()
             .any(|b| matches!(b, Block::Code { .. })));
@@ -642,6 +656,29 @@ let x = 1;
         assert_eq!(id.index, 6);
         assert_eq!(step(id, true), Action::Lab(LabId::Geodesics));
         assert_eq!(step(Track::Geo.first(), false), Action::Map);
+    }
+
+    #[test]
+    fn next_tracks_walk_to_the_map_without_a_lab() {
+        for track in Track::NEXT {
+            let mut id = track.first();
+            let mut hops = 0u8;
+            loop {
+                match step(id, true) {
+                    Action::Lesson(next) => {
+                        id = next;
+                        hops += 1;
+                    }
+                    Action::Map => break,
+                    Action::Lab(lab) => panic!("{} nie otwiera labu {:?}", id.slug(), lab),
+                    Action::None => panic!("krok nie może być pusty"),
+                }
+            }
+            assert_eq!(hops, track.lesson_count() - 1);
+            assert_eq!(id.index, track.lesson_count());
+            assert_eq!(step(id, true), Action::Map);
+            assert_eq!(step(track.first(), false), Action::Map);
+        }
     }
 
     #[test]
