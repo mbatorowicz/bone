@@ -8,7 +8,8 @@
 //! [`rk4`] to stepper na wektorze stanu. [`metric`] to Schwarzschild jako
 //! `g_μν` i trzy promienie `2M` / `3M` / `6M`. [`christoffel`] to analityczne
 //! Γ, [`geodesic`] składa je z RK4 w tor `(t, r, θ, φ)`. [`raytrace`] to
-//! obraz: piksel = geodezyjna zerowa wstecz, bez okna.
+//! obraz: piksel = geodezyjna zerowa wstecz, bez okna. [`tensor`] to algebra
+//! 4D: wektor, kowektor, maszyna (1,1), waga (0,2) i η Minkowskiego.
 
 pub mod christoffel;
 pub mod geodesic;
@@ -16,6 +17,7 @@ pub mod lorentz;
 pub mod metric;
 pub mod raytrace;
 pub mod rk4;
+pub mod tensor;
 
 pub use christoffel::Christoffel;
 pub use geodesic::{GeodesicError, GeodesicState};
@@ -25,3 +27,4 @@ pub use lorentz::{
 };
 pub use metric::{horizon_radius, isco_radius, photon_sphere_radius, MetricError, Schwarzschild};
 pub use raytrace::{Buffer, Hit, RaytraceError};
+pub use tensor::{Covector, Tensor02, Tensor11, Tensor20, Vector};
