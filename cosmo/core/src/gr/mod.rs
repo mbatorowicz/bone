@@ -15,10 +15,12 @@
 //! i horyzont `r+`. [`tensor`] to algebra 4D: wektor, kowektor, maszyna
 //! (1,1), waga (0,2) i η Minkowskiego. [`einstein`] to Riemann, Ricci,
 //! `G_μν` i `T_μν` na Schwarzschildu. [`pinn`] to residual ciepła i fali
-//! oraz mała sieć bez biblioteki ML.
+//! oraz mała sieć bez biblioteki ML. [`fd`] to ten sam residual na węzłach
+//! 1D: FTCS i leapfrog, bez CUDA i bez `g_μν`.
 
 pub mod christoffel;
 pub mod einstein;
+pub mod fd;
 pub mod geodesic;
 pub mod kerr;
 pub mod lorentz;
@@ -30,6 +32,7 @@ pub mod tensor;
 
 pub use christoffel::Christoffel;
 pub use einstein::{dust, field_residual, vacuum, Curvature};
+pub use fd::{FdError, Mesh};
 pub use geodesic::{GeodesicError, GeodesicState};
 pub use kerr::{Kerr, KerrChristoffel, KerrError, KerrGeoError};
 pub use lorentz::{

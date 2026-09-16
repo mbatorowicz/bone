@@ -9,7 +9,7 @@
 //! w 2D. C3 i C4 otwierają laboratorium raytracera (klatka w tle).
 //! Tensory / Einstein / PINN: algebra, pole i residual — obraz z `gr`, nie stub.
 //! Kerr: wleczenie, ergo, pęk pierścieni; lekcja 4 otwiera raytracer z a/M.
-//! Siatka PDE: stub i placeholder; ostatnia lekcja wraca na mapę, bez labu.
+//! Siatka PDE: węzły, FTCS i leapfrog z `gr::fd`; ostatnia lekcja wraca na mapę, bez labu.
 
 use std::f32::consts::TAU;
 
@@ -848,21 +848,13 @@ let x = 1;
                 src.chars().count()
             );
             assert!(
-                src.contains("placeholder"),
-                "krok 33: animacja jeszcze nie wchodzi {}",
-                id.slug()
-            );
-            assert!(
-                !src.contains("gr::fd.rs"),
-                "krok 33 bez silnika fd {}",
+                !src.contains("placeholder"),
+                "krok 35: animacja zamiast placeholdera {}",
                 id.slug()
             );
         }
         let last = source(Track::Pde.lessons().last().unwrap());
-        assert!(
-            last.contains("mapę"),
-            "PDE 4 wraca na mapę"
-        );
+        assert!(last.contains("mapę"), "PDE 4 wraca na mapę");
         assert!(
             last.contains("Nie ma tu labu") || last.contains("Nie ma labu"),
             "PDE 4 bez labu"

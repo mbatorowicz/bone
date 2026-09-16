@@ -19,7 +19,8 @@
 //!   [`gr::christoffel`] i [`gr::geodesic`] to Γ i tor; [`gr::raytrace`]
 //!   to obraz z geodezyjnej zerowej; [`gr::tensor`] to algebra 4D i η;
 //!   [`gr::einstein`] to Riemann, `G_μν` i próżnia Schwarzschilda;
-//!   [`gr::pinn`] to residual ciepła i mała sieć, bez PyTorcha.
+//!   [`gr::pinn`] to residual ciepła i mała sieć, bez PyTorcha;
+//!   [`gr::fd`] to ten sam residual na węzłach 1D (FTCS, leapfrog).
 //!   Osobno od [`sr`]: tu znacznik `(ct, x, y, z)` albo metryka, tam pęd
 //!   cząstki.
 //!

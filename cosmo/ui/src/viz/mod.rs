@@ -10,12 +10,14 @@
 //! Tensory, Einstein i PINN: algebra, pole i residual — liczby z `gr`,
 //! obraz w [`tensors`], [`einstein`], [`pinn`]. Kerr 1–4: wleczenie, ergo,
 //! pęk pierścieni i zapowiedź cienia — liczby z [`bone_core::gr::kerr`],
-//! obraz w [`kerr`]. Siatka PDE zostaje placeholderem. Raytracer ma
-//! suwak `a/M`; ścieżka C startuje od zera.
+//! obraz w [`kerr`]. Siatka PDE 1–4: węzły, FTCS, leapfrog i półka —
+//! liczby z [`bone_core::gr::fd`], obraz w [`fd`]. Raytracer ma suwak
+//! `a/M`; ścieżka C startuje od zera.
 
 pub mod blackhole;
 pub mod clocks;
 pub mod einstein;
+pub mod fd;
 pub mod geodesics;
 pub mod kerr;
 pub mod metric_grid;
@@ -121,7 +123,10 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
                 Outcome::Drawn
             }
         }
-        // Siatka PDE: stub na mapie, obraz to placeholder (krok 35).
+        (Track::Pde, 1..=4) => {
+            fd::draw(ui, id.index, playback);
+            Outcome::Drawn
+        }
         _ => Outcome::Placeholder,
     }
 }
@@ -160,18 +165,13 @@ mod tests {
     }
 
     #[test]
-    fn pde_track_keeps_the_placeholder() {
+    fn pde_lessons_draw_instead_of_placeholder() {
         for id in Track::Pde.lessons() {
             let ctx = eframe::egui::Context::default();
             ctx.begin_pass(eframe::egui::RawInput::default());
             eframe::egui::CentralPanel::default().show(&ctx, |ui| {
                 let mut playback = Playback::default();
-                assert_eq!(
-                    draw(ui, id, &mut playback),
-                    Outcome::Placeholder,
-                    "{}",
-                    id.slug()
-                );
+                assert_eq!(draw(ui, id, &mut playback), Outcome::Drawn, "{}", id.slug());
             });
             let _ = ctx.end_pass();
         }
