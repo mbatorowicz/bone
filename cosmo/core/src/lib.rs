@@ -17,7 +17,8 @@
 //! - [`gr`] — liczby kursu STW → OTW. [`gr::lorentz`] to boost i interwał;
 //!   [`gr::rk4`] to stepper; [`gr::metric`] to Schwarzschild jako `g_μν`;
 //!   [`gr::christoffel`] i [`gr::geodesic`] to Γ i tor; [`gr::raytrace`]
-//!   to obraz z geodezyjnej zerowej; [`gr::tensor`] to algebra 4D i η.
+//!   to obraz z geodezyjnej zerowej; [`gr::tensor`] to algebra 4D i η;
+//!   [`gr::einstein`] to Riemann, `G_μν` i próżnia Schwarzschilda.
 //!   Osobno od [`sr`]: tu znacznik `(ct, x, y, z)` albo metryka, tam pęd
 //!   cząstki.
 //!

@@ -10,8 +10,10 @@
 //! Γ, [`geodesic`] składa je z RK4 w tor `(t, r, θ, φ)`. [`raytrace`] to
 //! obraz: piksel = geodezyjna zerowa wstecz, bez okna. [`tensor`] to algebra
 //! 4D: wektor, kowektor, maszyna (1,1), waga (0,2) i η Minkowskiego.
+//! [`einstein`] to Riemann, Ricci, `G_μν` i `T_μν` na Schwarzschildu.
 
 pub mod christoffel;
+pub mod einstein;
 pub mod geodesic;
 pub mod lorentz;
 pub mod metric;
@@ -20,6 +22,7 @@ pub mod rk4;
 pub mod tensor;
 
 pub use christoffel::Christoffel;
+pub use einstein::{dust, field_residual, vacuum, Curvature};
 pub use geodesic::{GeodesicError, GeodesicState};
 pub use lorentz::{
     boost, boost_x, compose_boost_1d, contract_rod, contracted_length, dilated_time, gamma,
