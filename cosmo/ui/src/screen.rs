@@ -278,7 +278,7 @@ impl LabId {
             Self::Particles => Mode::Particles.subtitle(),
             Self::Atoms => Mode::Atoms.subtitle(),
             Self::Geodesics => "zrzut w równiku Schwarzschilda",
-            Self::BlackHole => "obraz dysku · spin = 0",
+            Self::BlackHole => "obraz dysku · suwak a/M",
         }
     }
 
@@ -367,7 +367,9 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(20.0);
         ui.label(RichText::new("Obrót i siatka").strong());
         ui.label(
-            RichText::new("Kerr ma suwak a/M i drzwi do raytracera. Siatka PDE to jeszcze stub. Raytracer nadal spin = 0.")
+            RichText::new(
+                "Kerr ma suwak a/M i drzwi do raytracera. Siatka PDE to jeszcze stub. Ścieżka C startuje z a = 0.",
+            )
             .small()
             .weak(),
         );
@@ -384,7 +386,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.label(RichText::new("Laboratoria").strong());
         ui.label(
             RichText::new(
-                "Cztery chmury, stół zrzucania i raytracer: dysk Schwarzschilda, spin = 0.",
+                "Cztery chmury, stół zrzucania i raytracer: dysk, suwak a/M, ścieżka C od zera.",
             )
             .small()
             .weak(),
@@ -575,7 +577,7 @@ mod tests {
             Some(LabId::BlackHole)
         );
         assert_eq!(Track::Kerr.first().opens_lab(), None);
-        assert!(LabId::BlackHole.subtitle().contains("spin = 0"));
+        assert!(LabId::BlackHole.subtitle().contains("a/M"));
     }
 
     #[test]

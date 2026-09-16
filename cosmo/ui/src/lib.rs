@@ -34,7 +34,7 @@ use crate::camera::Camera;
 use crate::lesson::Playback;
 use crate::panels::{Action, Setup};
 use crate::replay::Replay;
-use crate::screen::{LabId, LessonId, Nav, Screen};
+use crate::screen::{LabId, LessonId, Nav, Screen, Track};
 use crate::simulation::{Mode, View};
 use crate::viz::{blackhole, geodesics};
 use bone_core::session::Session;
@@ -247,8 +247,16 @@ impl App {
             self.setup.apply_stw_nbody_door();
         }
         if lab == LabId::BlackHole {
-            self.bh_lab
-                .sync_from_lesson(self.lesson.mass, self.lesson.spin);
+            match self.screen {
+                Screen::Lesson(id) if id.track == Track::Kerr => {
+                    self.bh_lab
+                        .sync_from_kerr_lesson(self.lesson.mass, self.lesson.spin);
+                }
+                _ => {
+                    self.bh_lab
+                        .sync_from_lesson(self.lesson.mass, self.lesson.spin);
+                }
+            }
         }
         self.open_lab(lab);
     }
@@ -618,6 +626,7 @@ mod tests {
         assert_eq!(app.screen, Screen::Lab(LabId::BlackHole));
         assert!((app.bh_lab.mass - 0.8).abs() < 1e-15);
         assert!((app.bh_lab.incline - 1.1).abs() < 1e-6);
+        assert_eq!(app.bh_lab.chi, 0.0);
         app.back_to_map();
         assert_eq!(app.screen, Screen::Map);
         assert!(!app.running);
@@ -675,6 +684,11 @@ mod tests {
         app.open_course_lab(LabId::BlackHole);
         assert_eq!(app.screen, Screen::Lab(LabId::BlackHole));
         assert!((app.bh_lab.mass - 1.0).abs() < 1e-15);
+        assert!(
+            (app.bh_lab.chi - f64::from(crate::viz::kerr::CHI_DEFAULT)).abs() < 1e-6,
+            "Kerr 4 miało wnieść a/M, jest {}",
+            app.bh_lab.chi
+        );
         app.back_to_map();
         assert_eq!(app.screen, Screen::Map);
     }

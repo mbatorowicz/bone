@@ -1,18 +1,18 @@
-//! Laboratorium raytracera: obraz dysku Schwarzschilda w oknie.
+//! Laboratorium raytracera: jeden stół, klatka 320×180, suwak `a/M`.
 //!
 //! Liczby biorą się z [`bone_core::gr::raytrace`]. Ten plik składa klatkę
-//! 320×180 w `ColorImage`, nakłada pierścienie `2M` / `3M` / `6M` i woła
-//! silnik w wątku tła — suwak ma pokazać „liczę…”, a nie zamrozić egui.
-//! Spin metryki zostaje zerem: to nie Kerr.
+//! w `ColorImage`, nakłada `r+` / ergo / ISCO± i woła silnik w wątku tła —
+//! suwak ma pokazać „liczę…”, a nie zamrozić egui. Ścieżka C startuje z
+//! `a = 0`. Kerr 4 wnosi `a/M` z lekcji. Bez drugiego `LabId`.
 
-use std::f64::consts::TAU;
+use std::f64::consts::{FRAC_PI_2, TAU};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 
 use bone_core::gr::raytrace::{
     self, Camera, Config, CAMERA_R_OVER_M, FOV_Y, HEIGHT_DEFAULT, INCLINATION, WIDTH_DEFAULT,
 };
-use bone_core::gr::{horizon_radius, isco_radius, photon_sphere_radius};
+use bone_core::gr::{photon_sphere_radius, Kerr};
 use eframe::egui::{
     self, Color32, ColorImage, FontId, Pos2, Rect, RichText, Shape, Stroke, TextureHandle,
     TextureOptions, Ui, Vec2,
@@ -39,33 +39,44 @@ const LABEL: Color32 = Color32::from_rgb(140, 150, 170);
 const RING_H: Color32 = Color32::from_rgb(90, 90, 100);
 const RING_PH: Color32 = Color32::from_rgb(220, 180, 90);
 const RING_ISCO: Color32 = Color32::from_rgb(120, 180, 220);
+const RING_ISCO_M: Color32 = Color32::from_rgb(80, 130, 170);
+const ERGO: Color32 = Color32::from_rgb(200, 110, 90);
 const BUSY: Color32 = Color32::from_rgb(240, 210, 120);
+/// Ten sam kres co suwak lekcji Kerr: `|a| ≤ 0.998 M`.
+pub const CHI_MAX: f64 = 0.998;
 
 const RING_POINTS: usize = 64;
 
 /// Suwaki, które składają kadr. `r` kamery jest absolutne, więc M puchnie
-/// horyzont na obrazie zamiast tylko zmieniać etykietę.
+/// horyzont na obrazie zamiast tylko zmieniać etykietę. `chi` to `a/M`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shot {
     pub mass: f64,
     pub incline: f64,
     pub distance: f64,
+    pub chi: f64,
 }
 
 impl Shot {
-    pub fn clamped(mass: f64, incline: f64, distance: f64) -> Self {
+    pub fn clamped(mass: f64, incline: f64, distance: f64, chi: f64) -> Self {
         let mass = clamp_mass(mass);
         Self {
             mass,
             incline: clamp_incline(incline),
             distance: clamp_distance(distance, mass),
+            chi: clamp_chi(chi),
         }
+    }
+
+    /// `a = χ M`. Zero χ to Schwarzschild.
+    pub fn spin(self) -> f64 {
+        self.chi * self.mass
     }
 }
 
 impl Default for Shot {
     fn default() -> Self {
-        Self::clamped(MASS_DEFAULT, INCLINE_DEFAULT, DIST_DEFAULT)
+        Self::clamped(MASS_DEFAULT, INCLINE_DEFAULT, DIST_DEFAULT, 0.0)
     }
 }
 
@@ -79,6 +90,7 @@ pub struct Lab {
     pub mass: f64,
     pub incline: f64,
     pub distance: f64,
+    pub chi: f64,
     width: u32,
     height: u32,
     job: Option<Job>,
@@ -96,6 +108,7 @@ impl Default for Lab {
             mass: shot.mass,
             incline: shot.incline,
             distance: shot.distance,
+            chi: shot.chi,
             width: WIDTH_DEFAULT,
             height: HEIGHT_DEFAULT,
             job: None,
@@ -110,13 +123,21 @@ impl Default for Lab {
 
 impl Lab {
     pub fn shot(&self) -> Shot {
-        Shot::clamped(self.mass, self.incline, self.distance)
+        Shot::clamped(self.mass, self.incline, self.distance, self.chi)
     }
 
-    /// C3/C4 niosą M i i; odległość zostaje, chyba że weszłaby pod horyzont.
+    /// C3/C4 niosą M i i. Spin metryki zostaje zerem: ścieżka C.
     pub fn sync_from_lesson(&mut self, mass: f64, incline: f32) {
         self.mass = clamp_mass(mass);
         self.incline = clamp_incline(f64::from(incline));
+        self.distance = clamp_distance(self.distance, self.mass);
+        self.chi = 0.0;
+    }
+
+    /// Kerr 4: `a/M` z lekcji. Nachylenie zostaje kadrem kursu.
+    pub fn sync_from_kerr_lesson(&mut self, mass: f64, chi: f32) {
+        self.mass = clamp_mass(mass);
+        self.chi = clamp_chi(f64::from(chi));
         self.distance = clamp_distance(self.distance, self.mass);
     }
 
@@ -192,6 +213,14 @@ pub fn clamp_incline(v: f64) -> f64 {
     }
 }
 
+pub fn clamp_chi(chi: f64) -> f64 {
+    if !chi.is_finite() {
+        0.0
+    } else {
+        chi.clamp(0.0, CHI_MAX)
+    }
+}
+
 pub fn clamp_distance(distance: f64, mass: f64) -> f64 {
     let mass = clamp_mass(mass);
     let floor = DIST_MIN.max(2.5 * mass);
@@ -203,12 +232,12 @@ pub fn clamp_distance(distance: f64, mass: f64) -> f64 {
     raw.clamp(floor, DIST_MAX)
 }
 
-/// Kadr z suwaków. Kamera kursu to M = 1, θ ≈ 75°, r = 30.
+/// Kadr z suwaków. Kamera kursu to M = 1, θ ≈ 75°, r = 30, a = 0.
 pub fn config_for(shot: Shot, width: u32, height: u32) -> Result<Config, raytrace::RaytraceError> {
-    let shot = Shot::clamped(shot.mass, shot.incline, shot.distance);
-    let mut cfg = Config::with_size(shot.mass, width, height)?;
+    let shot = Shot::clamped(shot.mass, shot.incline, shot.distance, shot.chi);
+    let mut cfg = Config::with_spin(shot.mass, shot.spin(), width, height)?;
     cfg.camera = Camera::new(shot.distance, shot.incline, 0.0, FOV_Y)?;
-    let horizon = cfg.metric.horizon_radius();
+    let horizon = Kerr::new(shot.mass, shot.spin())?.horizon_radius();
     if cfg.camera.r() <= horizon {
         return Err(raytrace::RaytraceError::CameraInside {
             r: cfg.camera.r(),
@@ -295,7 +324,7 @@ pub fn draw_ray_door(ui: &mut Ui) -> bool {
         }
         ui.label(
             RichText::new(format!(
-                "wejście → {} · 320×180 w tle · spin = 0",
+                "wejście → {} · 320×180 w tle · ścieżka C → a/M = 0",
                 LabId::BlackHole.label()
             ))
             .small()
@@ -304,7 +333,7 @@ pub fn draw_ray_door(ui: &mut Ui) -> bool {
         );
     });
     ui.label(
-        RichText::new("Suwaki M / i / r zostają. Okno ma liczyć piksele, nie zamarzać.")
+        RichText::new("Suwaki M / i / r / a/M. Okno ma liczyć piksele, nie zamarzać.")
             .small()
             .weak(),
     );
@@ -325,9 +354,9 @@ pub fn draw_lab(ctx: &egui::Context, lab: &mut Lab) {
 
 fn controls(ui: &mut Ui, lab: &mut Lab) {
     ui.add_space(8.0);
-    ui.label(RichText::new("Raytracer Schwarzschilda").strong());
+    ui.label(RichText::new("Raytracer").strong());
     ui.label(
-        RichText::new("G = c = 1 · spin = 0. Piksel = geodezyjna zerowa wstecz.")
+        RichText::new("G = c = 1 · a/M na suwaku. Zero to stara mata 2M / 3M / 6M.")
             .small()
             .weak(),
     );
@@ -350,22 +379,21 @@ fn controls(ui: &mut Ui, lab: &mut Lab) {
             .fixed_decimals(1),
     );
     lab.distance = clamp_distance(lab.distance, lab.mass);
+    ui.add(
+        egui::Slider::new(&mut lab.chi, 0.0..=CHI_MAX)
+            .text("a/M")
+            .fixed_decimals(3),
+    );
+    lab.chi = clamp_chi(lab.chi);
     ui.add_space(8.0);
     let shot = lab.shot();
+    ui.label(RichText::new(rings_hud(shot)).monospace());
     ui.label(
         RichText::new(format!(
-            "2M={:.2}  3M={:.2}  6M={:.2}",
-            horizon_radius(shot.mass),
-            photon_sphere_radius(shot.mass),
-            isco_radius(shot.mass)
-        ))
-        .monospace(),
-    );
-    ui.label(
-        RichText::new(format!(
-            "θ = {:.0}°  ·  r / M = {:.1}  ·  spin = 0",
+            "θ = {:.0}°  ·  r / M = {:.1}  ·  a/M = {:.3}",
             shot.incline.to_degrees(),
-            shot.distance / shot.mass
+            shot.distance / shot.mass,
+            shot.chi
         ))
         .small()
         .weak()
@@ -379,16 +407,16 @@ fn controls(ui: &mut Ui, lab: &mut Lab) {
         Color32::from_rgb(160, 200, 140)
     }));
     ui.label(
-        RichText::new(format!("{}×{} · Kerr nie wchodzi", lab.width, lab.height))
+        RichText::new(format!("{}×{} · jeden stół", lab.width, lab.height))
             .small()
             .weak()
             .monospace(),
     );
     ui.add_space(12.0);
     ui.horizontal(|ui| {
-        ring_tile(ui, "2M", "horyzont", RING_H);
-        ring_tile(ui, "3M", "foton", RING_PH);
-        ring_tile(ui, "6M", "ISCO", RING_ISCO);
+        ring_tile(ui, "r+", "horyzont", RING_H);
+        ring_tile(ui, "ergo", "prąd", ERGO);
+        ring_tile(ui, "I±", "ISCO", RING_ISCO);
     });
     ui.add_space(10.0);
     egui::Frame::group(ui.style())
@@ -401,6 +429,28 @@ fn controls(ui: &mut Ui, lab: &mut Lab) {
                     .color(Color32::from_rgb(200, 230, 170)),
             );
         });
+}
+
+fn rings_hud(shot: Shot) -> String {
+    let Some(bh) = Kerr::new(shot.mass, shot.spin()).ok() else {
+        return "Kerr —".into();
+    };
+    if shot.chi < 1e-6 {
+        format!(
+            "2M={:.2}  3M={:.2}  6M={:.2}",
+            bh.horizon_radius(),
+            photon_sphere_radius(shot.mass),
+            bh.isco_plus()
+        )
+    } else {
+        format!(
+            "r+={:.2}  ergo={:.2}  I+={:.2}/{:.2}",
+            bh.horizon_radius(),
+            bh.ergo(FRAC_PI_2).unwrap_or(0.0),
+            bh.isco_plus(),
+            bh.isco_minus()
+        )
+    }
 }
 
 fn ring_tile(ui: &mut Ui, title: &str, hint: &str, color: Color32) {
@@ -471,12 +521,7 @@ fn fit_frame(avail: Rect, w: f32, h: f32) -> Rect {
 
 fn stroke_overlay(ui: &Ui, rect: Rect, shot: Shot, width: f64, height: f64) {
     let painter = ui.painter_at(rect);
-    let rings = [
-        (horizon_radius(shot.mass), RING_H, "2M"),
-        (photon_sphere_radius(shot.mass), RING_PH, "3M"),
-        (isco_radius(shot.mass), RING_ISCO, "6M"),
-    ];
-    for (rho, color, name) in rings {
+    for (rho, color, name) in overlay_rings(shot) {
         let mut pts = Vec::with_capacity(RING_POINTS);
         for i in 0..=RING_POINTS {
             let phi = TAU * (i as f64) / (RING_POINTS as f64);
@@ -500,10 +545,36 @@ fn stroke_overlay(ui: &Ui, rect: Rect, shot: Shot, width: f64, height: f64) {
     painter.text(
         rect.left_bottom() + Vec2::new(8.0, -8.0),
         egui::Align2::LEFT_BOTTOM,
-        "overlay 2M / 3M / 6M · spin = 0",
+        if shot.chi < 1e-6 {
+            "overlay r+ / ergo / ISCO  ·  a = 0"
+        } else {
+            "overlay r+ / ergo / ISCO±"
+        },
         FontId::proportional(11.0),
         LABEL,
     );
+}
+
+fn overlay_rings(shot: Shot) -> Vec<(f64, Color32, &'static str)> {
+    let Some(bh) = Kerr::new(shot.mass, shot.spin()).ok() else {
+        return Vec::new();
+    };
+    let rh = bh.horizon_radius();
+    let glued = shot.chi < 1e-6;
+    let mut rings = vec![(rh, RING_H, if glued { "2M" } else { "r+" })];
+    if let Ok(ergo) = bh.ergo(FRAC_PI_2) {
+        if !glued && (ergo - rh).abs() > 0.04 * shot.mass.max(0.2) {
+            rings.push((ergo, ERGO, "ergo"));
+        }
+    }
+    if glued {
+        rings.push((photon_sphere_radius(shot.mass), RING_PH, "3M"));
+        rings.push((bh.isco_plus(), RING_ISCO, "6M"));
+    } else {
+        rings.push((bh.isco_plus(), RING_ISCO, "I+"));
+        rings.push((bh.isco_minus(), RING_ISCO_M, "I−"));
+    }
+    rings
 }
 
 fn to_screen(rect: Rect, frac: [f32; 2]) -> Pos2 {
@@ -539,6 +610,11 @@ mod tests {
         assert_eq!(clamp_distance(DIST_DEFAULT, 1.0), DIST_DEFAULT);
         assert_eq!(clamp_distance(1.0, 1.0), DIST_MIN);
         assert!(clamp_distance(12.0, MASS_MAX) >= 2.5 * MASS_MAX);
+        assert_eq!(clamp_chi(0.0), 0.0);
+        assert_eq!(clamp_chi(CHI_MAX), CHI_MAX);
+        assert_eq!(clamp_chi(2.0), CHI_MAX);
+        assert_eq!(clamp_chi(f64::NAN), 0.0);
+        assert!((CHI_MAX - f64::from(crate::viz::kerr::CHI_MAX)).abs() < 1e-5);
     }
 
     #[test]
@@ -550,14 +626,16 @@ mod tests {
         assert!((cfg.camera.r() - course.camera.r()).abs() < 1e-12);
         assert!((cfg.camera.theta() - course.camera.theta()).abs() < 1e-12);
         assert_eq!(cfg.camera.phi(), 0.0);
+        assert_eq!(cfg.spin, 0.0);
+        assert_eq!(Shot::default().chi, 0.0);
     }
 
     #[test]
     fn overlay_flattens_when_inclination_grows() {
         let w = WIDTH_DEFAULT as f64;
         let h = HEIGHT_DEFAULT as f64;
-        let face = Shot::clamped(1.0, INCLINE_MIN, DIST_DEFAULT);
-        let edge = Shot::clamped(1.0, INCLINE_MAX, DIST_DEFAULT);
+        let face = Shot::clamped(1.0, INCLINE_MIN, DIST_DEFAULT, 0.0);
+        let edge = Shot::clamped(1.0, INCLINE_MAX, DIST_DEFAULT, 0.0);
         let face_y = ring_span_y(face, 6.0, w, h).expect("twarz");
         let edge_y = ring_span_y(edge, 6.0, w, h).expect("krawędź");
         assert!(
@@ -570,10 +648,22 @@ mod tests {
     fn mass_grows_the_coordinate_rings() {
         let w = WIDTH_DEFAULT as f64;
         let h = HEIGHT_DEFAULT as f64;
-        let small = Shot::clamped(MASS_MIN, INCLINE_DEFAULT, DIST_DEFAULT);
-        let big = Shot::clamped(MASS_MAX, INCLINE_DEFAULT, DIST_DEFAULT);
-        let a = ring_span_y(small, horizon_radius(small.mass), w, h).unwrap();
-        let b = ring_span_y(big, horizon_radius(big.mass), w, h).unwrap();
+        let small = Shot::clamped(MASS_MIN, INCLINE_DEFAULT, DIST_DEFAULT, 0.0);
+        let big = Shot::clamped(MASS_MAX, INCLINE_DEFAULT, DIST_DEFAULT, 0.0);
+        let a = ring_span_y(
+            small,
+            Kerr::new(small.mass, 0.0).unwrap().horizon_radius(),
+            w,
+            h,
+        )
+        .unwrap();
+        let b = ring_span_y(
+            big,
+            Kerr::new(big.mass, 0.0).unwrap().horizon_radius(),
+            w,
+            h,
+        )
+        .unwrap();
         assert!(b > a, "większe M miało puchnąć 2M: {a} vs {b}");
     }
 
@@ -615,6 +705,39 @@ mod tests {
         assert_eq!(cfg.camera.phi(), 0.0);
         assert!((cfg.metric.mass() - MASS_MIN).abs() < 1e-15);
         assert_eq!(cfg.spin, 0.0);
+        assert_eq!(lab.chi, 0.0);
+    }
+
+    #[test]
+    fn kerr_lesson_sync_carries_chi_and_path_c_stays_zero() {
+        let mut lab = Lab::default();
+        lab.sync_from_kerr_lesson(1.0, crate::viz::kerr::CHI_DEFAULT);
+        assert!((lab.chi - f64::from(crate::viz::kerr::CHI_DEFAULT)).abs() < 1e-6);
+        let cfg = config_for(lab.shot(), 8, 8).unwrap();
+        assert!((cfg.spin - lab.chi * lab.mass).abs() < 1e-15);
+        assert!(cfg.spin > 0.0);
+        lab.sync_from_lesson(0.8, 1.1);
+        assert_eq!(lab.chi, 0.0);
+        let cfg = config_for(lab.shot(), 8, 8).unwrap();
+        assert_eq!(cfg.spin, 0.0);
+        assert!((lab.mass - 0.8).abs() < 1e-15);
+        assert!((lab.incline - 1.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn changing_chi_marks_the_frame_busy() {
+        let mut lab = Lab::default();
+        lab.displayed = Some(lab.shot());
+        assert!(!lab.is_busy());
+        lab.chi = 0.5;
+        assert!(lab.is_busy());
+        assert_eq!(lab.status(), "liczę…");
+        let rings = overlay_rings(lab.shot());
+        assert!(rings.iter().any(|r| r.2 == "r+"));
+        assert!(rings.iter().any(|r| r.2 == "I+"));
+        let zero = overlay_rings(Shot::default());
+        assert!(zero.iter().any(|r| r.2 == "2M"));
+        assert!(zero.iter().any(|r| r.2 == "6M"));
     }
 
     #[test]

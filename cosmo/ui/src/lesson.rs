@@ -8,7 +8,7 @@
 //! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–2: pierścienie i pęk
 //! w 2D. C3 i C4 otwierają laboratorium raytracera (klatka w tle).
 //! Tensory / Einstein / PINN: algebra, pole i residual — obraz z `gr`, nie stub.
-//! Kerr: wleczenie, ergo, pęk pierścieni; lekcja 4 otwiera raytracer (spin = 0).
+//! Kerr: wleczenie, ergo, pęk pierścieni; lekcja 4 otwiera raytracer z a/M.
 //! Siatka PDE: stub i placeholder; ostatnia lekcja wraca na mapę, bez labu.
 
 use std::f32::consts::TAU;

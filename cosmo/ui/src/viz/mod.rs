@@ -10,8 +10,8 @@
 //! Tensory, Einstein i PINN: algebra, pole i residual — liczby z `gr`,
 //! obraz w [`tensors`], [`einstein`], [`pinn`]. Kerr 1–4: wleczenie, ergo,
 //! pęk pierścieni i zapowiedź cienia — liczby z [`bone_core::gr::kerr`],
-//! obraz w [`kerr`]. Siatka PDE zostaje placeholderem. Suwak `a` w
-//! laboratorium raytracera nie wchodzi.
+//! obraz w [`kerr`]. Siatka PDE zostaje placeholderem. Raytracer ma
+//! suwak `a/M`; ścieżka C startuje od zera.
 
 pub mod blackhole;
 pub mod clocks;

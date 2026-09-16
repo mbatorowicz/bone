@@ -2,7 +2,7 @@
 //!
 //! Liczby biorą się z [`bone_core::gr::kerr`]. Ten plik nie woła
 //! [`bone_core::gr::raytrace::Buffer`]: klatka 320×180 zostaje laboratorium.
-//! Suwak `a` w raytracerze wejdzie w kroku 32.
+//! Suwak `a` w raytracerze jest w [`blackhole`]. Ten plik zostaje przekrojem.
 
 use std::f64::consts::FRAC_PI_2;
 
@@ -118,7 +118,7 @@ pub fn photon_impact(bh: Kerr, prograde: bool) -> Option<f64> {
     b.is_finite().then_some(b)
 }
 
-/// Drzwi z lekcji 4: animacja zostaje, laboratorium nadal ma `spin = 0`.
+/// Drzwi z lekcji 4: animacja zostaje, laboratorium bierze a/M z suwaka.
 pub fn draw_ray_door(ui: &mut Ui) -> bool {
     let mut open = false;
     ui.add_space(6.0);
@@ -134,7 +134,7 @@ pub fn draw_ray_door(ui: &mut Ui) -> bool {
         }
         ui.label(
             RichText::new(format!(
-                "wejście → {} · 320×180 w tle · spin = 0",
+                "wejście → {} · 320×180 w tle · a/M z tej karty",
                 LabId::BlackHole.label()
             ))
             .small()
@@ -143,7 +143,7 @@ pub fn draw_ray_door(ui: &mut Ui) -> bool {
         );
     });
     ui.label(
-        RichText::new("Suwak a/M jest na tej karcie. W laboratorium cień nadal siedzi w osi.")
+        RichText::new("Laboratorium doliczy cień. Ścieżka C nadal startuje od a = 0.")
             .small()
             .weak(),
     );
