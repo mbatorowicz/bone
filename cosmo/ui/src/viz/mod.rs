@@ -8,13 +8,16 @@
 //! Ścieżka czarnej dziury 1–4: pierścienie, pęk i Einstein w 2D ([`rings`]).
 //! C3 i C4 otwierają laboratorium raytracera ([`blackhole`]): klatka w tle.
 //! Tensory, Einstein i PINN: algebra, pole i residual — liczby z `gr`,
-//! obraz w [`tensors`], [`einstein`], [`pinn`]. Kerr i siatka PDE są na mapie
-//! jako stuby: obraz to placeholder, bez `gr::kerr` i bez suwaka `a`.
+//! obraz w [`tensors`], [`einstein`], [`pinn`]. Kerr 1–4: wleczenie, ergo,
+//! pęk pierścieni i zapowiedź cienia — liczby z [`bone_core::gr::kerr`],
+//! obraz w [`kerr`]. Siatka PDE zostaje placeholderem. Suwak `a` w
+//! laboratorium raytracera nie wchodzi.
 
 pub mod blackhole;
 pub mod clocks;
 pub mod einstein;
 pub mod geodesics;
+pub mod kerr;
 pub mod metric_grid;
 pub mod minkowski;
 pub mod pinn;
@@ -111,7 +114,14 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
             pinn::draw(ui, id.index, playback);
             Outcome::Drawn
         }
-        // Kerr / PDE: stub na mapie, obraz to placeholder (kroki 31 i 35).
+        (Track::Kerr, 1..=4) => {
+            if kerr::draw(ui, id.index, playback) {
+                Outcome::OpenLab(LabId::BlackHole)
+            } else {
+                Outcome::Drawn
+            }
+        }
+        // Siatka PDE: stub na mapie, obraz to placeholder (krok 35).
         _ => Outcome::Placeholder,
     }
 }
@@ -137,22 +147,33 @@ mod tests {
     }
 
     #[test]
-    fn later_tracks_keep_the_placeholder() {
-        for track in Track::LATER {
-            for id in track.lessons() {
-                let ctx = eframe::egui::Context::default();
-                ctx.begin_pass(eframe::egui::RawInput::default());
-                eframe::egui::CentralPanel::default().show(&ctx, |ui| {
-                    let mut playback = Playback::default();
-                    assert_eq!(
-                        draw(ui, id, &mut playback),
-                        Outcome::Placeholder,
-                        "{}",
-                        id.slug()
-                    );
-                });
-                let _ = ctx.end_pass();
-            }
+    fn kerr_lessons_draw_instead_of_placeholder() {
+        for id in Track::Kerr.lessons() {
+            let ctx = eframe::egui::Context::default();
+            ctx.begin_pass(eframe::egui::RawInput::default());
+            eframe::egui::CentralPanel::default().show(&ctx, |ui| {
+                let mut playback = Playback::default();
+                assert_eq!(draw(ui, id, &mut playback), Outcome::Drawn, "{}", id.slug());
+            });
+            let _ = ctx.end_pass();
+        }
+    }
+
+    #[test]
+    fn pde_track_keeps_the_placeholder() {
+        for id in Track::Pde.lessons() {
+            let ctx = eframe::egui::Context::default();
+            ctx.begin_pass(eframe::egui::RawInput::default());
+            eframe::egui::CentralPanel::default().show(&ctx, |ui| {
+                let mut playback = Playback::default();
+                assert_eq!(
+                    draw(ui, id, &mut playback),
+                    Outcome::Placeholder,
+                    "{}",
+                    id.slug()
+                );
+            });
+            let _ = ctx.end_pass();
         }
     }
 }

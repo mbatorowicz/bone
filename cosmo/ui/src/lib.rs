@@ -646,25 +646,37 @@ mod tests {
     }
 
     #[test]
-    fn later_paths_open_lessons_and_return_to_the_map() {
+    fn later_paths_open_lessons_and_kerr_opens_the_raytracer() {
         let mut app = App::default();
-        for track in screen::Track::LATER {
-            let mut id = track.first();
-            app.open_lesson(id);
-            assert_eq!(app.screen, Screen::Lesson(id));
-            assert!(app.lesson.playing);
-            let mut hops = 0u8;
-            while let Some(next) = id.next() {
-                app.open_lesson(next);
-                id = next;
-                hops += 1;
-            }
-            assert_eq!(hops, track.lesson_count() - 1);
-            assert_eq!(lesson::step(id, true), lesson::Action::Map);
-            assert_eq!(id.opens_lab(), None);
-            app.back_to_map();
-            assert_eq!(app.screen, Screen::Map);
+        let mut id = screen::Track::Pde.first();
+        app.open_lesson(id);
+        assert_eq!(app.screen, Screen::Lesson(id));
+        while let Some(next) = id.next() {
+            app.open_lesson(next);
+            id = next;
         }
+        assert_eq!(lesson::step(id, true), lesson::Action::Map);
+        assert_eq!(id.opens_lab(), None);
+        app.back_to_map();
+
+        id = screen::Track::Kerr.first();
+        app.open_lesson(id);
+        while let Some(next) = id.next() {
+            app.open_lesson(next);
+            id = next;
+        }
+        assert_eq!(id.index, 4);
+        assert_eq!(
+            lesson::step(id, true),
+            lesson::Action::Lab(LabId::BlackHole)
+        );
+        app.lesson.mass = 1.0;
+        app.lesson.spin = crate::viz::kerr::CHI_DEFAULT;
+        app.open_course_lab(LabId::BlackHole);
+        assert_eq!(app.screen, Screen::Lab(LabId::BlackHole));
+        assert!((app.bh_lab.mass - 1.0).abs() < 1e-15);
+        app.back_to_map();
+        assert_eq!(app.screen, Screen::Map);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //!
 //! Fizyka tu nie mieszka. Ten moduł wie tylko, *gdzie* jesteśmy i dokąd można
 //! przejść: trzy ścieżki rdzenia, trzy następne (tensory, Einstein, PINN),
-//! dwie późniejsze (Kerr, siatka PDE), cztery chmury, stół zrzucania i
+//! Kerr z animacją i siatka PDE jako stub, cztery chmury, stół zrzucania i
 //! raytracer. Tekst lekcji rysuje [`crate::lesson`]. Silnik chmury zostaje
 //! w panelu sim-labu.
 
@@ -85,7 +85,7 @@ impl Track {
                 "Masa zgina przestrzeń. Schwarzschild jako rozwiązanie, nie zgadywanie."
             }
             Self::Pinn => "Sieć zgaduje funkcję; błąd to residual równania, nie etykieta.",
-            Self::Kerr => "Obrót zgina czas. a = 0 to stara mata. Suwak a wejdzie później.",
+            Self::Kerr => "Obrót zgina czas. Suwak a/M: zero to stara mata 2M / 3M / 6M.",
             Self::Pde => "Węzły zamiast suwaków PINN. Ciepło i fala 1D — nie metryka.",
         }
     }
@@ -197,12 +197,13 @@ impl LessonId {
         })
     }
 
-    /// A7 → N-ciała; B6 → zrzucanie; C4 → raytracer. C3 ma drzwi w obrazie.
+    /// A7 → N-ciała; B6 → zrzucanie; C4 i Kerr 4 → raytracer. C3 ma drzwi w obrazie.
     pub fn opens_lab(self) -> Option<LabId> {
         match (self.track, self.index) {
             (Track::Stw, 7) => Some(LabId::Nbody),
             (Track::Geo, 6) => Some(LabId::Geodesics),
             (Track::Bh, 4) => Some(LabId::BlackHole),
+            (Track::Kerr, 4) => Some(LabId::BlackHole),
             _ => None,
         }
     }
@@ -325,7 +326,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.label(RichText::new("Bone — czasoprzestrzeń").size(22.0).strong());
         ui.label(
             RichText::new(
-                "Kurs: STW, geodezyjna, czarna dziura. Potem tensory, Einstein, PINN. Obrót i siatka — stuby.",
+                "Kurs: STW, geodezyjna, czarna dziura. Potem tensory, Einstein, PINN. Kerr ma obraz; siatka PDE — stub.",
             )
             .small()
             .weak(),
@@ -366,9 +367,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(20.0);
         ui.label(RichText::new("Obrót i siatka").strong());
         ui.label(
-            RichText::new(
-                "Stuby i placeholder. Ostatnia lekcja wraca na mapę. Raytracer nadal spin = 0.",
-            )
+            RichText::new("Kerr ma suwak a/M i drzwi do raytracera. Siatka PDE to jeszcze stub. Raytracer nadal spin = 0.")
             .small()
             .weak(),
         );
@@ -564,11 +563,18 @@ mod tests {
             .slug(),
             "pde/01"
         );
-        for track in Track::NEXT.iter().chain(Track::LATER.iter()).copied() {
+        for track in Track::NEXT {
             assert_eq!(track.first().opens_lab(), None);
             assert_eq!(track.lessons().last().unwrap().opens_lab(), None);
             assert_eq!(track.lessons().last().unwrap().next(), None);
         }
+        assert_eq!(Track::Pde.first().opens_lab(), None);
+        assert_eq!(Track::Pde.lessons().last().unwrap().opens_lab(), None);
+        assert_eq!(
+            Track::Kerr.lessons().last().unwrap().opens_lab(),
+            Some(LabId::BlackHole)
+        );
+        assert_eq!(Track::Kerr.first().opens_lab(), None);
         assert!(LabId::BlackHole.subtitle().contains("spin = 0"));
     }
 

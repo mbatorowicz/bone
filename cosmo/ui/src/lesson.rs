@@ -8,7 +8,8 @@
 //! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–2: pierścienie i pęk
 //! w 2D. C3 i C4 otwierają laboratorium raytracera (klatka w tle).
 //! Tensory / Einstein / PINN: algebra, pole i residual — obraz z `gr`, nie stub.
-//! Kerr i siatka PDE: stub i placeholder; ostatnia lekcja wraca na mapę, bez labu.
+//! Kerr: wleczenie, ergo, pęk pierścieni; lekcja 4 otwiera raytracer (spin = 0).
+//! Siatka PDE: stub i placeholder; ostatnia lekcja wraca na mapę, bez labu.
 
 use std::f32::consts::TAU;
 
@@ -32,8 +33,9 @@ pub enum Action {
 }
 
 /// Play/pauza, faza pętli, β Minkowskiego, masa Schwarzschilda, obrót kuli
-/// i nachylenie dysku (ścieżka C, ten sam `spin`). `probe` to r albo x
-/// na ścieżkach Einstein / PINN / tensory; `density` to ρ pyłu.
+/// i nachylenie dysku (ścieżka C, ten sam `spin`). Na ścieżce Kerr `spin`
+/// to `a/M`. `probe` to r albo x na ścieżkach Einstein / PINN / tensory;
+/// `density` to ρ pyłu.
 ///
 /// Reset przy zmianie lekcji, żeby obraz nie skakał ze środka poprzedniej
 /// strony, a γ wracało do podręcznikowego 5/4 i M do jedynki z testów metryki.
@@ -75,7 +77,7 @@ impl Playback {
     }
 }
 
-/// Wstecz / Dalej po ścieżce. A7 otwiera N-ciała; B6 — geodezyjne; C4 — raytracer.
+/// Wstecz / Dalej po ścieżce. A7 otwiera N-ciała; B6 — geodezyjne; C4 i Kerr 4 — raytracer.
 pub fn step(id: LessonId, forward: bool) -> Action {
     if forward {
         if let Some(lab) = id.opens_lab() {
@@ -796,6 +798,11 @@ let x = 1;
                 "krok 27 bez Cauchy horizon {}",
                 id.slug()
             );
+            assert!(
+                !src.contains("placeholder"),
+                "krok 31: animacja zamiast placeholdera {}",
+                id.slug()
+            );
         }
     }
 
@@ -855,7 +862,11 @@ let x = 1;
 
     #[test]
     fn next_tracks_walk_to_the_map_without_a_lab() {
-        for track in Track::NEXT.iter().chain(Track::LATER.iter()).copied() {
+        for track in Track::NEXT
+            .iter()
+            .copied()
+            .chain(std::iter::once(Track::Pde))
+        {
             let mut id = track.first();
             let mut hops = 0u8;
             loop {
@@ -874,6 +885,36 @@ let x = 1;
             assert_eq!(step(id, true), Action::Map);
             assert_eq!(step(track.first(), false), Action::Map);
         }
+    }
+
+    #[test]
+    fn kerr_next_walks_to_the_fourth_lesson_then_raytracer() {
+        let mut id = Track::Kerr.first();
+        let mut hops = 0;
+        loop {
+            match step(id, true) {
+                Action::Lesson(next) => {
+                    id = next;
+                    hops += 1;
+                }
+                Action::Lab(lab) => {
+                    assert_eq!(lab, LabId::BlackHole);
+                    break;
+                }
+                Action::Map => panic!("Kerr 4 miało otworzyć raytracer, nie mapę"),
+                Action::None => panic!("krok nie może być pusty"),
+            }
+        }
+        assert_eq!(hops, 3);
+        assert_eq!(id.index, 4);
+        assert_eq!(step(id, true), Action::Lab(LabId::BlackHole));
+        assert_eq!(step(Track::Kerr.first(), false), Action::Map);
+        assert_eq!(id.opens_lab(), Some(LabId::BlackHole));
+        assert_eq!(
+            Track::Kerr.lessons().nth(2).unwrap().opens_lab(),
+            None,
+            "Kerr 3 otwiera lab tylko z lekcji 4"
+        );
     }
 
     #[test]
