@@ -614,6 +614,7 @@ mod tests {
         let cfg = config_for(lab.shot(), 8, 8).unwrap();
         assert_eq!(cfg.camera.phi(), 0.0);
         assert!((cfg.metric.mass() - MASS_MIN).abs() < 1e-15);
+        assert_eq!(cfg.spin, 0.0);
     }
 
     #[test]

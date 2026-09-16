@@ -8,7 +8,8 @@
 //!
 //! Stan geodezyjnej to te same 8 liczb co w [`super::geodesic`]:
 //! `(t, r, θ, φ, u^t, u^r, u^θ, u^φ)`. Krok robi [`super::rk4`].
-//! Zachowane: `E = −u_t` i `L_z = u_φ`. Raytracer i `r−` nie wchodzą.
+//! Zachowane: `E = −u_t` i `L_z = u_φ`. `r−` nie wchodzi; obraz pikseli
+//! jest w [`super::raytrace`] (`Config.spin`).
 //!
 //! Sygnatura (−,+,+,+):
 //!

@@ -1,8 +1,10 @@
-//! Obraz Schwarzschilda: piksel to geodezyjna zerowa liczona wstecz od kamery.
+//! Obraz czarnej dziury: piksel to geodezyjna zerowa liczona wstecz od kamery.
 //!
 //! UI i wątek tła są w kroku 14. Tu jest tylko bufor: kamera w tetradzie
-//! statycznego obserwatora, RK4 z [`super::geodesic`], los `horyzont` /
-//! `dysk` / `ucieczka`. Sygnatura (−,+,+,+) jak w [`super::metric`].
+//! statycznego obserwatora, RK4, los `horyzont` / `dysk` / `ucieczka`.
+//! [`Config::spin`] domyślnie 0 — wtedy tor jest Schwarzschildem z
+//! [`super::geodesic`], horyzont `2M`. Przy `a ≠ 0` tor jest Kerrem z
+//! [`super::kerr`], horyzont `r+`. Sygnatura (−,+,+,+) jak w [`super::metric`].
 //!
 //! Domyślny kadr to 320×180 na CPU. Testy biorą 32×18, żeby kończyć się
 //! w rozsądnym czasie bez okna.
@@ -11,6 +13,7 @@ use std::f64::consts::FRAC_PI_2;
 use std::fmt;
 
 use super::geodesic::{self, GeodesicError, GeodesicState, STATE_LEN};
+use super::kerr::{self, Kerr, KerrError, KerrGeoError};
 use super::metric::{horizon_radius, MetricError, Schwarzschild};
 use super::rk4::Scratch;
 
@@ -38,6 +41,8 @@ const POLE_SIN_MIN: f64 = 1e-8;
 pub enum RaytraceError {
     Metric(MetricError),
     Geodesic(GeodesicError),
+    Kerr(KerrError),
+    KerrGeo(KerrGeoError),
     CameraInside { r: f64, horizon: f64 },
     BadCamera { r: f64, theta: f64, fov_y: f64 },
     BadSize { width: u32, height: u32 },
@@ -49,10 +54,12 @@ impl fmt::Display for RaytraceError {
         match *self {
             Self::Metric(ref e) => write!(f, "{e}"),
             Self::Geodesic(ref e) => write!(f, "{e}"),
+            Self::Kerr(ref e) => write!(f, "{e}"),
+            Self::KerrGeo(ref e) => write!(f, "{e}"),
             Self::CameraInside { r, horizon } => {
                 write!(
                     f,
-                    "kamera r={r} jest na horyzoncie albo pod nim (2M={horizon})"
+                    "kamera r={r} jest na horyzoncie albo pod nim (horyzont={horizon})"
                 )
             }
             Self::BadCamera { r, theta, fov_y } => {
@@ -85,6 +92,18 @@ impl From<MetricError> for RaytraceError {
 impl From<GeodesicError> for RaytraceError {
     fn from(value: GeodesicError) -> Self {
         Self::Geodesic(value)
+    }
+}
+
+impl From<KerrError> for RaytraceError {
+    fn from(value: KerrError) -> Self {
+        Self::Kerr(value)
+    }
+}
+
+impl From<KerrGeoError> for RaytraceError {
+    fn from(value: KerrGeoError) -> Self {
+        Self::KerrGeo(value)
     }
 }
 
@@ -175,12 +194,28 @@ impl Disk {
         }
         Self::new(bh.isco_radius(), DISK_OUTER_OVER_M * mass)
     }
+
+    /// Cienki dysk od ISCO współobrotu do `20M`. Przy `a = 0` to [`Self::course`].
+    pub fn around(bh: Kerr) -> Result<Self, RaytraceError> {
+        let mass = bh.mass();
+        if mass == 0.0 {
+            return Err(RaytraceError::BadDisk {
+                r_inner: 0.0,
+                r_outer: 0.0,
+            });
+        }
+        Self::new(bh.isco_plus(), DISK_OUTER_OVER_M * mass)
+    }
 }
 
 /// Kadr, kamera i dysk. [`Config::course`] to 320×180; testy biorą [`Config::tiny`].
+///
+/// [`Self::spin`] = 0 zostawia Schwarzschilda. Przy `a ≠ 0` [`render`] bierze
+/// geodezyjną z [`super::kerr`] i horyzont `r+`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Config {
     pub metric: Schwarzschild,
+    pub spin: f64,
     pub camera: Camera,
     pub disk: Disk,
     pub width: u32,
@@ -197,27 +232,52 @@ impl Config {
         Self::with_size(mass, WIDTH_TINY, HEIGHT_TINY)
     }
 
+    /// Mały kadr ze spinem. Test cienia: `a = 0.9`.
+    pub fn tiny_spin(mass: f64, spin: f64) -> Result<Self, RaytraceError> {
+        Self::with_spin(mass, spin, WIDTH_TINY, HEIGHT_TINY)
+    }
+
     pub fn with_size(mass: f64, width: u32, height: u32) -> Result<Self, RaytraceError> {
+        Self::with_spin(mass, 0.0, width, height)
+    }
+
+    pub fn with_spin(mass: f64, spin: f64, width: u32, height: u32) -> Result<Self, RaytraceError> {
         if width == 0 || height == 0 {
             return Err(RaytraceError::BadSize { width, height });
         }
         let metric = Schwarzschild::new(mass)?;
+        let kerr = Kerr::new(mass, spin)?;
         let camera = Camera::course(metric)?;
-        let horizon = metric.horizon_radius();
+        let horizon = kerr.horizon_radius();
         if camera.r() <= horizon {
             return Err(RaytraceError::CameraInside {
                 r: camera.r(),
                 horizon,
             });
         }
+        let disk = if spin == 0.0 {
+            Disk::course(metric)?
+        } else {
+            Disk::around(kerr)?
+        };
         Ok(Self {
             metric,
+            spin,
             camera,
-            disk: Disk::course(metric)?,
+            disk,
             width,
             height,
             max_steps: MAX_STEPS_DEFAULT,
         })
+    }
+
+    /// Kerr z masy Schwarzschilda i [`Self::spin`].
+    pub fn kerr(self) -> Result<Kerr, RaytraceError> {
+        Ok(Kerr::new(self.metric.mass(), self.spin)?)
+    }
+
+    fn spinning(self) -> bool {
+        self.spin != 0.0
     }
 }
 
@@ -311,6 +371,29 @@ pub fn seed(
     seed_direction(bh, camera, n)
 }
 
+/// Promień zerowy z piksela na Kerrze. Horyzont to `r+`, nie `2M`.
+pub fn seed_kerr(
+    bh: Kerr,
+    camera: Camera,
+    width: u32,
+    height: u32,
+    x: u32,
+    y: u32,
+) -> Result<GeodesicState, RaytraceError> {
+    if width == 0 || height == 0 || x >= width || y >= height {
+        return Err(RaytraceError::BadSize { width, height });
+    }
+    let horizon = bh.horizon_radius();
+    if camera.r() <= horizon {
+        return Err(RaytraceError::CameraInside {
+            r: camera.r(),
+            horizon,
+        });
+    }
+    let n = pixel_direction(camera, width, height, x, y);
+    seed_direction_kerr(bh, camera, n)
+}
+
 /// Całkuje geodezyjną aż do horyzontu, dysku albo ucieczki.
 pub fn trace(
     bh: Schwarzschild,
@@ -361,6 +444,56 @@ pub fn trace(
     }
 }
 
+/// Całkuje geodezyjną Kerra aż do `r+`, dysku albo ucieczki.
+pub fn trace_kerr(
+    bh: Kerr,
+    start: GeodesicState,
+    disk: Disk,
+    r_escape: f64,
+    max_steps: usize,
+    scratch: &mut Scratch,
+) -> Hit {
+    let mut y = start.to_array();
+    let mut prev = start;
+    let r_h = bh.horizon_radius();
+    let capture_r = r_h + 0.04 * bh.mass().max(1e-12);
+    for _ in 0..max_steps {
+        if !prev.r.is_finite() || prev.r <= capture_r {
+            return Hit::Horizon;
+        }
+        if prev.theta.sin().abs() < POLE_SIN_MIN {
+            return Hit::Escape;
+        }
+        let h = affine_step(prev.r, bh.mass());
+        match kerr::step(bh, 0.0, &mut y, h, scratch) {
+            Ok(()) => {}
+            Err(KerrGeoError::Metric(KerrError::InvalidAngle { .. })) => return Hit::Escape,
+            Err(_) => return Hit::Horizon,
+        }
+        let next = match GeodesicState::from_slice(&y) {
+            Ok(s) => s,
+            Err(_) => return Hit::Horizon,
+        };
+        if !next.r.is_finite() || next.r <= capture_r {
+            return Hit::Horizon;
+        }
+        if let Some(r_cross) = equator_radius(prev, next) {
+            if r_cross >= disk.r_inner && r_cross <= disk.r_outer {
+                return Hit::Disk { r: r_cross };
+            }
+        }
+        if next.r >= r_escape && next.u_r > 0.0 {
+            return Hit::Escape;
+        }
+        prev = next;
+    }
+    if prev.r < 4.0 * bh.mass().max(1e-12) {
+        Hit::Horizon
+    } else {
+        Hit::Escape
+    }
+}
+
 /// Liczy cały kadr. CPU, bez wątku tła.
 pub fn render(cfg: Config) -> Result<Buffer, RaytraceError> {
     if cfg.width == 0 || cfg.height == 0 {
@@ -379,17 +512,27 @@ pub fn render(cfg: Config) -> Result<Buffer, RaytraceError> {
     let mut hits = vec![Hit::Escape; n];
     let mut scratch = Scratch::with_len(STATE_LEN);
     let r_escape = cfg.camera.r() * 1.15;
+    let kerr = if cfg.spinning() {
+        Some(cfg.kerr()?)
+    } else {
+        None
+    };
     for y in 0..cfg.height {
         for x in 0..cfg.width {
-            let start = seed(cfg.metric, cfg.camera, cfg.width, cfg.height, x, y)?;
-            let hit = trace(
-                cfg.metric,
-                start,
-                cfg.disk,
-                r_escape,
-                cfg.max_steps,
-                &mut scratch,
-            );
+            let hit = if let Some(bh) = kerr {
+                let start = seed_kerr(bh, cfg.camera, cfg.width, cfg.height, x, y)?;
+                trace_kerr(bh, start, cfg.disk, r_escape, cfg.max_steps, &mut scratch)
+            } else {
+                let start = seed(cfg.metric, cfg.camera, cfg.width, cfg.height, x, y)?;
+                trace(
+                    cfg.metric,
+                    start,
+                    cfg.disk,
+                    r_escape,
+                    cfg.max_steps,
+                    &mut scratch,
+                )
+            };
             let i = (y as usize) * (cfg.width as usize) + (x as usize);
             hits[i] = hit;
             let c = hit.rgba();
@@ -443,6 +586,46 @@ fn seed_direction(
         u_r: n[0] * sqrt_f,
         u_theta: n[1] / camera.r(),
         u_phi: n[2] / (camera.r() * sin_th),
+    })
+}
+
+fn seed_direction_kerr(
+    bh: Kerr,
+    camera: Camera,
+    n: [f64; 3],
+) -> Result<GeodesicState, RaytraceError> {
+    let r = camera.r();
+    let theta = camera.theta();
+    let horizon = bh.horizon_radius();
+    if r <= horizon {
+        return Err(RaytraceError::CameraInside { r, horizon });
+    }
+    let gtt = bh.g_tt(r, theta)?;
+    if !(gtt < 0.0) {
+        return Err(RaytraceError::CameraInside { r, horizon });
+    }
+    let grr = bh.g_rr(r, theta)?;
+    let gthth = bh.g_theta_theta(r, theta)?;
+    let gpp = bh.g_phi_phi(r, theta)?;
+    let gtp = bh.g_t_phi(r, theta)?;
+    let e_t_t = 1.0 / (-gtt).sqrt();
+    let e_r_r = 1.0 / grr.sqrt();
+    let e_th = 1.0 / gthth.sqrt();
+    let spat_phi = gpp - gtp * gtp / gtt;
+    if !(spat_phi > 0.0) || !e_t_t.is_finite() || !e_r_r.is_finite() || !e_th.is_finite() {
+        return Err(RaytraceError::CameraInside { r, horizon });
+    }
+    let e_ph_ph = 1.0 / spat_phi.sqrt();
+    let e_ph_t = -(gtp / gtt) * e_ph_ph;
+    Ok(GeodesicState {
+        t: 0.0,
+        r,
+        theta,
+        phi: camera.phi(),
+        u_t: e_t_t + n[2] * e_ph_t,
+        u_r: n[0] * e_r_r,
+        u_theta: n[1] * e_th,
+        u_phi: n[2] * e_ph_ph,
     })
 }
 
@@ -529,6 +712,7 @@ mod tests {
         let cfg = Config::course(1.0).unwrap();
         assert_eq!(cfg.width, 320);
         assert_eq!(cfg.height, 180);
+        assert_eq!(cfg.spin, 0.0);
         assert_eq!(WIDTH_DEFAULT, 320);
         assert_eq!(HEIGHT_DEFAULT, 180);
     }
@@ -564,7 +748,9 @@ mod tests {
 
     #[test]
     fn tiny_image_center_is_black_horizon() {
-        let img = render(Config::tiny(1.0).unwrap()).unwrap();
+        let cfg = Config::tiny(1.0).unwrap();
+        assert_eq!(cfg.spin, 0.0);
+        let img = render(cfg).unwrap();
         assert_eq!(img.width, 32);
         assert_eq!(img.height, 18);
         // 32×18 nie ma piksela w geometrycznym środku; (16, 9) jest najbliżej.
@@ -590,6 +776,11 @@ mod tests {
             img.hit(16, 8).is_horizon(),
             "centrum (16,8) = {:?}",
             img.hit(16, 8)
+        );
+        assert_eq!(
+            horizon_mirror_mismatch(&img),
+            0,
+            "a=0: cień ma być lewo-prawo ten sam"
         );
     }
 
@@ -685,5 +876,80 @@ mod tests {
         let s = GeodesicState::circular_photon(bh).unwrap();
         let b = impact_parameter(bh, s).unwrap();
         assert!((b - 3.0 * 3.0_f64.sqrt()).abs() < 1e-12);
+    }
+
+    fn horizon_mirror_mismatch(img: &Buffer) -> usize {
+        let mut n = 0;
+        for y in 0..img.height {
+            for x in 0..img.width / 2 {
+                let left = img.hit(x, y).is_horizon();
+                let right = img.hit(img.width - 1 - x, y).is_horizon();
+                if left != right {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    #[test]
+    fn rejects_spin_above_mass() {
+        assert!(matches!(
+            Config::tiny_spin(1.0, 1.1),
+            Err(RaytraceError::Kerr(KerrError::InvalidSpin { mass, spin }))
+                if mass == 1.0 && spin == 1.1
+        ));
+        assert!(matches!(
+            Config::with_spin(1.0, f64::NAN, 8, 8),
+            Err(RaytraceError::Kerr(KerrError::InvalidSpin { .. }))
+        ));
+    }
+
+    #[test]
+    fn spinning_seed_is_null_and_horizon_is_r_plus() {
+        let bh = Kerr::new(1.0, 0.9).unwrap();
+        let cam = Camera::course(mass_one()).unwrap();
+        let r_plus = bh.horizon_radius();
+        assert!((r_plus - (1.0 + (1.0 - 0.81_f64).sqrt())).abs() < 1e-12);
+        assert!(r_plus < 2.0);
+        assert!(cam.r() > r_plus);
+        let look = seed_direction_kerr(bh, cam, [-1.0, 0.0, 0.0]).unwrap();
+        let kappa = bh.u_sq(look).unwrap();
+        assert!(kappa.abs() < 1e-12, "κ = {kappa}");
+        assert!(look.u_r < 0.0);
+        let cfg = Config::tiny_spin(1.0, 0.9).unwrap();
+        assert_eq!(cfg.spin, 0.9);
+        assert!((cfg.kerr().unwrap().horizon_radius() - r_plus).abs() < 1e-15);
+        assert!((cfg.disk.r_inner - bh.isco_plus()).abs() < 1e-15);
+        assert!(cfg.disk.r_inner < cfg.metric.isco_radius());
+    }
+
+    #[test]
+    fn spinning_shadow_is_left_right_asymmetric() {
+        let img = render(Config::tiny_spin(1.0, 0.9).unwrap()).unwrap();
+        assert_eq!(img.width, 32);
+        assert_eq!(img.height, 18);
+        let mismatch = horizon_mirror_mismatch(&img);
+        assert!(
+            mismatch > 0,
+            "a=0.9: cień lewo/prawo miał się różnić, dostał 0 par (horyzont {})",
+            img.hits.iter().filter(|h| h.is_horizon()).count()
+        );
+        let left = img
+            .hits
+            .iter()
+            .enumerate()
+            .filter(|(i, h)| (*i as u32) % img.width < img.width / 2 && h.is_horizon())
+            .count();
+        let right = img
+            .hits
+            .iter()
+            .enumerate()
+            .filter(|(i, h)| (*i as u32) % img.width >= img.width / 2 && h.is_horizon())
+            .count();
+        assert_ne!(
+            left, right,
+            "a=0.9: liczba pikseli horyzontu lewo={left} prawo={right}"
+        );
     }
 }

@@ -11,7 +11,8 @@
 //! [`christoffel::Christoffel`] nie zna `g_tφ`) i geodezyjna na tym samym
 //! stanie 8 liczb. [`christoffel`] to analityczne Γ Schwarzschilda, [`geodesic`] składa je z RK4
 //! w tor `(t, r, θ, φ)`. [`raytrace`] to obraz: piksel = geodezyjna zerowa
-//! wstecz, bez okna. [`tensor`] to algebra 4D: wektor, kowektor, maszyna
+//! wstecz, bez okna; `spin = 0` to Schwarzschild, `a ≠ 0` bierze [`kerr`]
+//! i horyzont `r+`. [`tensor`] to algebra 4D: wektor, kowektor, maszyna
 //! (1,1), waga (0,2) i η Minkowskiego. [`einstein`] to Riemann, Ricci,
 //! `G_μν` i `T_μν` na Schwarzschildu. [`pinn`] to residual ciepła i fali
 //! oraz mała sieć bez biblioteki ML.
