@@ -362,3 +362,59 @@ Wykonaj krok 17 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki
 ```
 Wykonaj krok 18 z docs/kurs-otw-kroki.md. Tylko gr::tensor z testami. Bez UI, bez równań Einsteina, bez PINN.
 ```
+
+## Krok 19 — Teksty Einstein dla laika
+
+**Cel:** Ścieżka `ein` kompletna tekstowo.
+
+**Pliki:** `cosmo/lessons/ein/*.md`.
+
+**Zrób:** lekcje 1–4: masa zgina przestrzeń; lewa strona (krzywizna); prawa strona (energia); próżnia i Schwarzschild. Laik, analogia → obraz → wzór → kod. Bez Kerra, bez PDE na siatce, bez nowych animacji.
+
+**Prompt:**
+
+```
+Wykonaj krok 19 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki Einstein. Bez silnika i bez nowych animacji.
+```
+
+## Krok 20 — `gr::einstein`
+
+**Cel:** Krzywizna i równanie pola na Schwarzschildu, testowane, bez UI.
+
+**Pliki:** `cosmo/core/src/gr/einstein.rs`.
+
+**Zrób:** Riemann z Γ, Ricci, skalar, `G_μν`, `T_μν` (próżnia i pył). Testy: Minkowski Riemann = 0; Kretschmann `48 M²/r⁶`; `G_μν = 0` poza horyzontem; `G_μν = 8π T_μν` w próżni. Bez Kerra, bez PDE na siatce, bez PINN.
+
+**Prompt:**
+
+```
+Wykonaj krok 20 z docs/kurs-otw-kroki.md. Tylko gr::einstein z testami. Bez UI, bez Kerra, bez sieci.
+```
+
+## Krok 21 — Teksty PINN dla laika
+
+**Cel:** Ścieżka `pinn` kompletna tekstowo.
+
+**Pliki:** `cosmo/lessons/pinn/*.md`.
+
+**Zrób:** lekcje 1–4: sieć zgaduje funkcję; residual nie etykieta; ciepło i fala; dlaczego Einstein jest drogi. Laik, analogia → obraz → wzór → kod. Bez PyTorcha w tekście jako zależności, bez Kerra.
+
+**Prompt:**
+
+```
+Wykonaj krok 21 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki PINN. Bez silnika i bez nowych animacji.
+```
+
+## Krok 22 — `gr::pinn`
+
+**Cel:** Residual PDE i mała sieć w `bone-core`, testowana, bez UI.
+
+**Pliki:** `cosmo/core/src/gr/pinn.rs`.
+
+**Zrób:** residual ciepła `u_t − k u_xx` i fali `u_tt − c² u_xx`; maleńka sieć 2→N→1; kilka kroków spadku. Testy: residual analitycznego ciepła ≈ 0; spadek błędu po kroku. Bez PyTorcha, bez Kerra, bez równań pola na siatce.
+
+**Prompt:**
+
+```
+Wykonaj krok 22 z docs/kurs-otw-kroki.md. Tylko gr::pinn z testami. Bez UI, bez Kerra, bez CUDA.
+```
