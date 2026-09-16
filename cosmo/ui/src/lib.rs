@@ -624,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn next_paths_open_stub_lessons_and_return_to_the_map() {
+    fn next_paths_open_lessons_and_return_to_the_map() {
         let mut app = App::default();
         for track in screen::Track::NEXT {
             let mut id = track.first();

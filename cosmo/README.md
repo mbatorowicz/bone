@@ -8,6 +8,8 @@ metryka i geodezyjna żyją w `gr`, nie w sile chmury.
 - **Geodezyjna** (`geo/01`–`06`) — Schwarzschild, RK4; lekcja 6 otwiera zrzucanie.
 - **Czarna dziura** (`bh/01`–`04`) — pierścienie `2M` / `3M` / `6M`; raytracer
   dysku, spin = 0, liczenie w tle.
+- **Następne działy** — tensory, równania Einsteina, PINN: pełny tekst,
+  silnik `gr` i animacja. Ostatnia lekcja wraca na mapę. Bez Kerra.
 
 Cztery chmury zostają:
 

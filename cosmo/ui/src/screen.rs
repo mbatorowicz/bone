@@ -325,7 +325,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.add_space(20.0);
         ui.label(RichText::new("Następne działy").strong());
         ui.label(
-            RichText::new("Stub i placeholder — pełny tekst i fizyka później. Bez Kerra.")
+            RichText::new("Tekst, silnik i animacja. Ostatnia lekcja wraca na mapę. Bez Kerra.")
                 .small()
                 .weak(),
         );

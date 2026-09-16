@@ -418,3 +418,59 @@ Wykonaj krok 21 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki
 ```
 Wykonaj krok 22 z docs/kurs-otw-kroki.md. Tylko gr::pinn z testami. Bez UI, bez Kerra, bez CUDA.
 ```
+
+## Krok 23 — Animacje tensory
+
+**Cel:** Ścieżka `ten` ma ruchomy obraz; liczby z `gr::tensor`.
+
+**Zależności:** kroki 17 i 18.
+
+**Pliki:** `cosmo/ui/src/viz/tensors.rs`; podpięcie w `viz/mod.rs`; `cosmo/lessons/ten/*.md` (akapit „Co widać”).
+
+**Zrób:** lekcje 1–5. Kartka i strzałka (skalar vs wektor); maszyna (1,1); skrzynka η(u,v); g_tt / g_rr vs η; podnieś / opuść. Suwak kąta, play/pauza. Bez Einsteina, bez PINN, bez Kerra.
+
+**Gotowe gdy:** suwak widać od razu; długość strzałki i ηη⁻¹ zgadzają się z testami; mapa nie pisze „stub”.
+
+**Prompt:**
+
+```
+Wykonaj krok 23 z docs/kurs-otw-kroki.md. Animacje lekcji tensory 1–5. Liczby z gr::tensor. Bez Einsteina na ekranie i bez PINN.
+```
+
+## Krok 24 — Animacje Einstein
+
+**Cel:** Ścieżka `ein` ma ruchomy obraz; liczby z `gr::einstein`.
+
+**Zależności:** kroki 19, 20 i 23.
+
+**Pliki:** `cosmo/ui/src/viz/einstein.rs`; `cosmo/lessons/ein/*.md` (akapit „Co widać”).
+
+**Zrób:** lekcje 1–4. Trampolina z suwakiem M; pętla / Kretschmann; szalki G vs 8πT (próżnia / pył); łąka 2M/3M/6M z G = 0. Bez Kerra, bez PDE na siatce, bez PINN.
+
+**Gotowe gdy:** Kretschmann i G na łące zgadzają się z testami silnika.
+
+**Prompt:**
+
+```
+Wykonaj krok 24 z docs/kurs-otw-kroki.md. Animacje lekcji Einstein 1–4. Liczby z gr::einstein. Bez Kerra i bez sieci.
+```
+
+## Krok 25 — Animacje PINN, mapa, siatka
+
+**Cel:** Ścieżka `pinn` ma ruchomy obraz; mapa nie kłamie, że to stub.
+
+**Zależności:** kroki 21, 22 i 24.
+
+**Pliki:** `cosmo/ui/src/viz/pinn.rs`; `cosmo/ui/src/screen.rs`; `cosmo/lessons/pinn/*.md`; README jeśli kłamie.
+
+**Zrób:** lekcje 1–4. Sieć 2→8→1; termometr residualu; ciepło i fala z analitycznego wzoru; półka Schwarzschilda vs garnek. `cargo test --workspace`, clippy. Commit + push. Bez Kerra, bez CUDA, bez zgadywania metryki.
+
+**Gotowe gdy:** residual analitycznego ciepła ≈ 0 na ekranie; następne działy nie piszą „stub”.
+
+**Prompt:**
+
+```
+Wykonaj krok 25 z docs/kurs-otw-kroki.md. Animacje PINN, podpis mapy, testy i clippy, commit i push. Bez Kerra i bez CUDA.
+```
+
+Kerr i PDE na siatce zostają później.

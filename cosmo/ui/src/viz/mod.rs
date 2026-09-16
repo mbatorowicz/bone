@@ -7,16 +7,20 @@
 //! Lekcja 6 otwiera stół zrzucania; sam równik rysuje [`geodesics`].
 //! Ścieżka czarnej dziury 1–4: pierścienie, pęk i Einstein w 2D ([`rings`]).
 //! C3 i C4 otwierają laboratorium raytracera ([`blackhole`]): klatka w tle.
-//! Tensory, Einstein i PINN zostają przy placeholdrze — krok 16, bez fizyki.
+//! Tensory, Einstein i PINN: algebra, pole i residual — liczby z `gr`,
+//! obraz w [`tensors`], [`einstein`], [`pinn`]. Kerr zostaje za mapą.
 
 pub mod blackhole;
 pub mod clocks;
+pub mod einstein;
 pub mod geodesics;
 pub mod metric_grid;
 pub mod minkowski;
+pub mod pinn;
 pub mod rings;
 pub mod rk4_film;
 pub mod sphere;
+pub mod tensors;
 
 use eframe::egui::Ui;
 
@@ -33,6 +37,8 @@ pub const MASS_DEFAULT: f64 = 1.0;
 pub const MASS_MAX: f64 = 2.5;
 /// Startowy obrót globusa: widać oba ślady, nie sam biegun.
 pub const SPIN_DEFAULT: f32 = 0.85;
+/// Sonda na łące: `r = 6` przy `M = 1` to ISCO z testów metryki.
+pub const PROBE_DEFAULT: f64 = 6.0;
 
 /// Co obraz lekcji zrobił z klatką.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,6 +98,44 @@ pub fn draw(ui: &mut Ui, id: LessonId, playback: &mut Playback) -> Outcome {
                 Outcome::Drawn
             }
         }
+        (Track::Tensor, 1..=5) => {
+            tensors::draw(ui, id.index, playback);
+            Outcome::Drawn
+        }
+        (Track::Einstein, 1..=4) => {
+            einstein::draw(ui, id.index, playback);
+            Outcome::Drawn
+        }
+        (Track::Pinn, 1..=4) => {
+            pinn::draw(ui, id.index, playback);
+            Outcome::Drawn
+        }
         _ => Outcome::Placeholder,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lesson::Playback;
+
+    #[test]
+    fn next_tracks_draw_instead_of_placeholder() {
+        for track in Track::NEXT {
+            for id in track.lessons() {
+                let ctx = eframe::egui::Context::default();
+                ctx.begin_pass(eframe::egui::RawInput::default());
+                eframe::egui::CentralPanel::default().show(&ctx, |ui| {
+                    let mut playback = Playback::default();
+                    assert_eq!(
+                        draw(ui, id, &mut playback),
+                        Outcome::Drawn,
+                        "{}",
+                        id.slug()
+                    );
+                });
+                let _ = ctx.end_pass();
+            }
+        }
     }
 }

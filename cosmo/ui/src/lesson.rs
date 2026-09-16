@@ -7,7 +7,7 @@
 //! Geodezyjna 1–5 też: kula, siatka z suwakiem M, film RK4 vs Euler.
 //! Lekcja 6 otwiera stół zrzucania. Czarna dziura 1–2: pierścienie i pęk
 //! w 2D. C3 i C4 otwierają laboratorium raytracera (klatka w tle).
-//! Tensory / Einstein / PINN: stub i placeholder, bez nowej fizyki.
+//! Tensory / Einstein / PINN: algebra, pole i residual — obraz z `gr`, nie stub.
 
 use std::f32::consts::TAU;
 
@@ -31,7 +31,8 @@ pub enum Action {
 }
 
 /// Play/pauza, faza pętli, β Minkowskiego, masa Schwarzschilda, obrót kuli
-/// i nachylenie dysku (ścieżka C, ten sam `spin`).
+/// i nachylenie dysku (ścieżka C, ten sam `spin`). `probe` to r albo x
+/// na ścieżkach Einstein / PINN / tensory; `density` to ρ pyłu.
 ///
 /// Reset przy zmianie lekcji, żeby obraz nie skakał ze środka poprzedniej
 /// strony, a γ wracało do podręcznikowego 5/4 i M do jedynki z testów metryki.
@@ -42,6 +43,8 @@ pub struct Playback {
     pub beta: f64,
     pub mass: f64,
     pub spin: f32,
+    pub probe: f64,
+    pub density: f64,
 }
 
 impl Default for Playback {
@@ -52,6 +55,8 @@ impl Default for Playback {
             beta: crate::viz::BETA_DEFAULT,
             mass: crate::viz::MASS_DEFAULT,
             spin: crate::viz::SPIN_DEFAULT,
+            probe: crate::viz::PROBE_DEFAULT,
+            density: 0.0,
         }
     }
 }
@@ -829,6 +834,8 @@ let x = 1;
         assert_eq!(p.beta, crate::viz::BETA_DEFAULT);
         assert_eq!(p.mass, crate::viz::MASS_DEFAULT);
         assert_eq!(p.spin, crate::viz::SPIN_DEFAULT);
+        assert_eq!(p.probe, crate::viz::PROBE_DEFAULT);
+        assert_eq!(p.density, 0.0);
         assert!((crate::viz::minkowski::gamma_of(p.beta) - 1.25).abs() < 1e-15);
     }
 

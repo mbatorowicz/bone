@@ -6,7 +6,8 @@
 //! z różniczki, nie z biblioteki autodiff. Kerr, siatka pola i MPI
 //! nie wchodzą.
 
-const HIDDEN: usize = 8;
+/// Ukryta warstwa: osiem schodków `tanh`. Wizualizacja rysuje każdy.
+pub const HIDDEN: usize = 8;
 const N_PARAMS: usize = HIDDEN * 4 + 1;
 
 /// Sieć 2→8→1. Suwaki są `f64`. `tanh` jest schodkiem, nie fizyką.
@@ -38,11 +39,19 @@ impl Net {
         net
     }
 
+    /// `h = tanh(W₁ · (x, t) + b₁)`.
+    pub fn hidden(self, x: f64, t: f64) -> [f64; HIDDEN] {
+        let mut h = [0.0; HIDDEN];
+        for (slot, (w1, b1)) in h.iter_mut().zip(self.w1.iter().zip(self.b1)) {
+            *slot = (w1[0] * x + w1[1] * t + b1).tanh();
+        }
+        h
+    }
+
     /// `u(x, t) = W₂ · tanh(W₁ · (x, t) + b₁) + b₂`.
     pub fn eval(self, x: f64, t: f64) -> f64 {
         let mut acc = self.b2;
-        for (w2, (w1, b1)) in self.w2.iter().zip(self.w1.iter().zip(self.b1)) {
-            let h = (w1[0] * x + w1[1] * t + b1).tanh();
+        for (w2, h) in self.w2.iter().zip(self.hidden(x, t)) {
             acc += w2 * h;
         }
         acc
@@ -168,6 +177,15 @@ mod tests {
         let n = Net::zeros();
         assert_eq!(n.eval(0.3, 0.1), 0.0);
         assert_eq!(n.eval(-1.0, 2.0), 0.0);
+    }
+
+    #[test]
+    fn biased_hidden_matches_tanh_of_first_row() {
+        let n = Net::biased();
+        let h = n.hidden(1.0, 0.0);
+        assert!((h[0] - 0.4_f64.tanh()).abs() < 1e-15);
+        assert_eq!(h[1], 0.0);
+        assert!((n.eval(1.0, 0.0) - (0.8 * 0.4_f64.tanh() + 0.1)).abs() < 1e-15);
     }
 
     #[test]

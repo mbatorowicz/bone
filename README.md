@@ -20,7 +20,12 @@ nie w laboratorium N-ciał.
   soczewkowanie i pierścień Einsteina w 2D. Raytracer (spin = 0) liczy
   obraz dysku w tle, z nakładką trzech promieni.
 
-Moduł `gr` (Lorentz, RK4, metryka, Christoffel, geodezyjna, raytrace)
+Potem trzy następne działy na mapie — tensory, równania Einsteina, PINN —
+z tekstem, silnikiem i animacją. Ostatnia lekcja wraca na mapę. Kerr
+zostaje za tą falą.
+
+Moduł `gr` (Lorentz, RK4, metryka, Christoffel, geodezyjna, raytrace,
+tensor, Einstein, PINN)
 jest osobny od `sr`. Slug `sr` to identyfikator chmury N-ciał, nie nazwa
 teorii: tam nadal nie ma metryki w sile ani fal grawitacyjnych.
 
@@ -51,7 +56,7 @@ liczba, która odróżnia przybliżenie od usterki.
 ```bash
 cd cosmo
 cargo build --release          # wynik: target/release/BoneCosmo
-cargo test --workspace         # 636 testów
+cargo test --workspace         # 688 testów
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
