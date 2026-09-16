@@ -1,6 +1,15 @@
 # Bone Cosmo
 
-Cztery laboratoria na jednym komputerze: N-ciała, kosmologia, cząstki i atomy.
+Kurs w oknie: szczególna teoria względności → geodezyjna → czarna dziura.
+Potem laboratoria. N-ciała (`sr`) to Newton + kinematyka SR. Nie OTW —
+metryka i geodezyjna żyją w `gr`, nie w sile chmury.
+
+- **STW** (`stw/01`–`07`) — Minkowski, Lorentz, zegary; lekcja 7 otwiera N-ciała.
+- **Geodezyjna** (`geo/01`–`06`) — Schwarzschild, RK4; lekcja 6 otwiera zrzucanie.
+- **Czarna dziura** (`bh/01`–`04`) — pierścienie `2M` / `3M` / `6M`; raytracer
+  dysku, spin = 0, liczenie w tle.
+
+Cztery chmury zostają:
 
 - **Kosmologia** (`lcdm`) — ΛCDM, Planck 2018, Particle-Mesh z izolowanymi
   brzegami (Hockney), warunki Zel'dovicha, całkowanie po `ln a`.
@@ -40,4 +49,4 @@ cargo wix --nocapture
 
 Albo skopiuj `BoneCosmo.exe` — to jeden plik, bez zależności .NET.
 
-Workspace: `core` (fizyka), `ui` (okno), `app` (binarka).
+Workspace: `core` (fizyka, w tym `gr`), `ui` (mapa, lekcje, okno), `app` (binarka).

@@ -267,7 +267,7 @@ pub fn draw_map(ui: &mut Ui) -> Option<Nav> {
         ui.label(RichText::new("Ścieżki").strong());
         ui.label(
             RichText::new(
-                "Każda karta otwiera lekcje. Stub i placeholder — pełny tekst i fizyka później.",
+                "Każda karta otwiera lekcje. Tekst, animacja i drzwi do laboratorium.",
             )
             .small()
             .weak(),

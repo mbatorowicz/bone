@@ -1,9 +1,33 @@
 # Bone
 
-Cztery laboratoria na jednym komputerze: N-ciała, kosmologia, cząstki i atomy.
-Jeden silnik, jedna aplikacja w Ruście — okno z panelem albo bieg wsadowy
-z wiersza poleceń. Slugi `sr`, `lcdm`, `sm`, `qm` to identyfikatory kodu,
-nie nazwy zakładek.
+Aplikacja otwiera się na mapie kursu: szczególna teoria względności,
+geodezyjna, czarna dziura. Potem drzwi do laboratoriów. Jeden silnik,
+jedna aplikacja w Ruście — okno albo bieg wsadowy z wiersza poleceń.
+
+## Kurs: STW → geodezyjna → czarna dziura
+
+Trzy ścieżki. Tekst po polsku, dla laika. Liczby kursu żyją w `gr`,
+nie w laboratorium N-ciał.
+
+- **Szczególna teoria względności** (`stw/01`–`07`) — błyskawica i jednoczesność,
+  stożek świetlny, Lorentz jako przechylanie osi, dylatacja, kontrakcja,
+  4-wektor wydarzenia. Lekcja 7 otwiera N-ciała z kartą: siła nadal
+  newtonowska, to nie OTW.
+- **Geodezyjna** (`geo/01`–`06`) — kula, metryka-linijka, Schwarzschild słowami,
+  równanie geodezyjne, RK4. Lekcja 6 otwiera zrzucanie: foton albo cząstka
+  w równiku, wychwyt / orbita / ucieczka wokół `3M` i `6M`.
+- **Czarna dziura** (`bh/01`–`04`) — pierścienie `2M` / `3M` / `6M`,
+  soczewkowanie i pierścień Einsteina w 2D. Raytracer (spin = 0) liczy
+  obraz dysku w tle, z nakładką trzech promieni.
+
+Moduł `gr` (Lorentz, RK4, metryka, Christoffel, geodezyjna, raytrace)
+jest osobny od `sr`. Slug `sr` to identyfikator chmury N-ciał, nie nazwa
+teorii: tam nadal nie ma metryki w sile ani fal grawitacyjnych.
+
+## Laboratoria
+
+Cztery chmury zostają, plus zrzucanie i raytracer z kursu. Slugi `sr`,
+`lcdm`, `sm`, `qm` to identyfikatory kodu, nie nazwy zakładek.
 
 - **N-ciała** (`sr`) — Newton + kinematyka SR. Izolowana chmura, dyssypacja
   zależna od gęstości. Nie OTW: nie ma metryki ani fal grawitacyjnych.
@@ -27,12 +51,12 @@ liczba, która odróżnia przybliżenie od usterki.
 ```bash
 cd cosmo
 cargo build --release          # wynik: target/release/BoneCosmo
-cargo test --workspace         # 491 testów
+cargo test --workspace         # 636 testów
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ```bash
-BoneCosmo                                        # okno z panelem
+BoneCosmo                                        # mapa kursu
 BoneCosmo presety                                # nazwy zestawów nastaw SR, SM, QM
 BoneCosmo sr   --zestaw fragmentation --kroki 2000 --do runs/frag
 BoneCosmo lcdm --zestaw struktury --do runs/lss
@@ -313,6 +337,8 @@ to wykrywa i ostrzega, zamiast po cichu przyciąć. Żeby dobrać `G` świadomie
 cosmo/
   core/          bone-core — fizyka, I/O, sesja, CLI
     vec3, rng, fft, grid, mesh
+    gr/          lorentz, rk4, metric, christoffel, geodesic, raytrace
+                 — kurs STW→OTW, osobno od sr
     sr/          relativity, state, config, presets, spawn,
                  backends/exact, integrator, cooling, diagnostics, engine
     lcdm/        units, cosmology, power, ics, engine, presets
@@ -323,7 +349,8 @@ cosmo/
     constants.rs CODATA 2022, PDG 2025 — jedno źródło stałych
     session.rs   wspólna pętla: krok, diagnostyka, zapis
     cli.rs       bieg wsadowy
-  ui/            bone-ui — kamera, renderer, panel, odtwarzacz
+  lessons/       Markdown ścieżek stw/, geo/, bh/
+  ui/            bone-ui — mapa kursu, lekcje, viz, kamera, renderer, panel
   app/           binarka BoneCosmo
 ```
 
@@ -337,6 +364,7 @@ początkowymi, nie sposobem liczenia grawitacji — dlatego `mesh`, `grid`, `fft
 `vec3` i `rng` są wspólne. Cząstki (`sm`) biorą z tego kinematykę relatywistyczną
 i solver dalekozasięgowy: Coulomb to to samo równanie co grawitacja, z innym
 ładunkiem. Atomy (`qm`) nie liczą sił — chmura jest próbką `|ψ|²`, a czas jest
-fazą superpozycji.
+fazą superpozycji. Kurs STW→OTW (`gr`) nie dzieli z nimi solvera: to boost,
+metryka i geodezyjna, nie chmura punktów.
 
 Strona z opisem i odnośnikiem do wydania leży w `www/` (statyczna, nic nie liczy).
