@@ -1,7 +1,7 @@
 //! Trójwymiarowa FFT na siatce sześciennej, w miejscu.
 //!
-//! `rustfft` transformuje ciągły wektor, a siatka 3D wymaga trzech przebiegów po
-//! kolejnych osiach. Oba miejsca, które tego potrzebują — solver PM i warunki
+//! Na GPU (potęga dwójki, siatka ≥ 16) robi to compute shader. Inaczej `rustfft`
+//! na CPU, trzema przebiegami po osiach. Oba miejsca — solver PM i warunki
 //! początkowe ΛCDM — używają tego jednego modułu. Rozwinięcie przebiegów na miejscu
 //! wywołania dawałoby sześć bloków różniących się wyłącznie wzorcem indeksowania,
 //! a błąd w kroku jednej osi przechodzi przez większość testów.
@@ -85,6 +85,13 @@ impl Fft3 {
         if ng == 0 {
             return;
         }
+        if crate::gpu::fft3(data, ng, dir) {
+            return;
+        }
+        self.run_cpu(data, ng, dir);
+    }
+
+    fn run_cpu(&mut self, data: &mut [Complex<f32>], ng: usize, dir: Direction) {
         let fft = match dir {
             Direction::Forward => self.planner.plan_fft_forward(ng),
             Direction::Inverse => self.planner.plan_fft_inverse(ng),
@@ -168,6 +175,28 @@ mod tests {
         let mut g = vec![Complex::new(0.0, 0.0); ng * ng * ng];
         g[0] = Complex::new(1.0, 0.0);
         g
+    }
+
+    #[test]
+    fn gpu_power_of_two_matches_cpu() {
+        if !crate::gpu::available() {
+            return;
+        }
+        let ng = 16;
+        let n = ng * ng * ng;
+        let original: Vec<Complex<f32>> = (0..n)
+            .map(|i| Complex::new((i % 11) as f32 - 5.0, (i % 5) as f32 - 2.0))
+            .collect();
+        let mut cpu = original.clone();
+        let mut gpu = original;
+        Fft3::new().run_cpu(&mut cpu, ng, Direction::Forward);
+        assert!(crate::gpu::fft3(&mut gpu, ng, Direction::Forward));
+        for (g, c) in gpu.iter().zip(cpu.iter()) {
+            assert!(
+                (g.re - c.re).abs() < 1e-3 && (g.im - c.im).abs() < 1e-3,
+                "{g} vs {c}"
+            );
+        }
     }
 
     #[test]

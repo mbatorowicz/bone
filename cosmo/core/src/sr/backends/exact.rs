@@ -9,8 +9,8 @@
 //! przed tym tylko softening, o ile byłby większy od tego szumu — czyli poprawność
 //! zależałaby od nastawy, którą użytkownik może zmienić.
 //!
-//! Zostaje więc czysty rachunek na `(xᵢ − xⱼ)`, zrównoleglony po `i`, bez tablic
-//! pośrednich i bez limitu pamięci na kafel.
+//! Zostaje więc czysty rachunek na `(xᵢ − xⱼ)`. Gdy jest Vulkan z `f64`,
+//! pętlę po `i` robi GPU; inaczej rayon na CPU. Wzór jest ten sam.
 //!
 //! Człon własny `j = i` jest pomijany jawnie, a nie przez to, że wychodzi zero:
 //! poleganie na kasowaniu się dwóch dużych liczb jest proszeniem się o kłopoty.
@@ -22,24 +22,52 @@ use crate::sr::state::Field;
 use crate::vec3::{Vec3, ZERO};
 
 /// Dokładne siły. Sensowne do kilku tysięcy cząstek — koszt rośnie jak N².
-#[derive(Default)]
-pub struct Exact;
+pub struct Exact {
+    gpu: bool,
+}
+
+impl Default for Exact {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Exact {
     pub fn new() -> Self {
-        Self
+        Self { gpu: true }
+    }
+
+    /// Wzorzec do testów zgodności GPU — ta sama pętla, bez karty.
+    pub fn cpu_only() -> Self {
+        Self { gpu: false }
     }
 }
 
 impl Backend for Exact {
     fn name(&self) -> &'static str {
-        "exact"
+        if self.gpu && crate::gpu::available() {
+            "exact-gpu"
+        } else {
+            "exact"
+        }
+    }
+
+    fn describe(&self) -> String {
+        match (self.gpu, crate::gpu::label()) {
+            (true, label) if !label.is_empty() => format!("exact · {label}"),
+            _ => "exact".to_string(),
+        }
     }
 
     fn compute(&mut self, positions: &[Vec3], masses: &[f64], g: f64, softening: f64) -> Field {
         let n = positions.len();
         if n < 2 {
             return Field::zeros(n);
+        }
+        if self.gpu {
+            if let Some(field) = crate::gpu::nbody(positions, masses, g, softening) {
+                return field;
+            }
         }
         let eps2 = softening * softening;
 

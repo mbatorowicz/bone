@@ -31,7 +31,9 @@
 //! (solver Particle-Mesh z izolowanymi brzegami), [`grid`] (pudło siatki
 //! i wagi cloud-in-cell), [`fft`], [`vec3`] i [`rng`]. Cząstki biorą z tego
 //! kinematykę relatywistyczną i solver dalekozasięgowy (Coulomb to to samo
-//! równanie co grawitacja, z innym ładunkiem).
+//! równanie co grawitacja, z innym ładunkiem). [`gpu`] to wgpu/Vulkan pod
+//! siłami O(N²), FFT 2ᵏ i raytracerem Schwarzschilda; bez karty wraca rayon
+//! i rustfft.
 //!
 //! Warstwy wyższe: [`io`] (checkpoint i trajektoria), [`session`] (pętla biegu)
 //! i [`cli`] (bieg wsadowy) nie zawierają fizyki i nie są przez fizykę używane.
@@ -43,6 +45,7 @@
 pub mod cli;
 pub mod constants;
 pub mod fft;
+pub mod gpu;
 pub mod gr;
 pub mod grid;
 pub mod io;

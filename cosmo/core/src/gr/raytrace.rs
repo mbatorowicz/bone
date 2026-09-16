@@ -6,8 +6,8 @@
 //! [`super::geodesic`], horyzont `2M`. Przy `a ≠ 0` tor jest Kerrem z
 //! [`super::kerr`], horyzont `r+`. Sygnatura (−,+,+,+) jak w [`super::metric`].
 //!
-//! Domyślny kadr to 320×180 na CPU. Testy biorą 32×18, żeby kończyć się
-//! w rozsądnym czasie bez okna.
+//! Domyślny kadr to 320×180. Schwarzschild liczy się na GPU, gdy karta
+//! umie f64; Kerr i brak urządzenia wracają na CPU. Testy biorą 32×18.
 
 use std::cmp::Ordering;
 use std::f64::consts::FRAC_PI_2;
@@ -495,13 +495,18 @@ pub fn trace_kerr(
     }
 }
 
-/// Liczy cały kadr. CPU, bez wątku tła.
+/// Liczy cały kadr. GPU dla Schwarzschilda, CPU dla Kerra i bez karty.
 pub fn render(cfg: Config) -> Result<Buffer, RaytraceError> {
     if cfg.width == 0 || cfg.height == 0 {
         return Err(RaytraceError::BadSize {
             width: cfg.width,
             height: cfg.height,
         });
+    }
+    if !cfg.spinning() {
+        if let Some(buf) = crate::gpu::raytrace_schwarzschild(cfg) {
+            return Ok(buf);
+        }
     }
     let n = (cfg.width as usize)
         .checked_mul(cfg.height as usize)

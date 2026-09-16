@@ -27,7 +27,8 @@ Cztery chmury zostają:
 - **Atomy** (`qm`) — Schrödinger · `|ψ|²`. Wodór dokładny, hel wariacyjny
   (~2%), Slater jako lekcja ekranowania.
 
-Liczy na tym komputerze (FFT + wgpu do okna). Nie używa Vercela.
+Liczy na GPU (wgpu/Vulkan: siły O(N²), FFT 2ᵏ, raytracer Schwarzschilda).
+Bez karty albo bez f64 wraca na CPU. Nie używa Vercela.
 
 ```
 cargo build --release          # target/release/BoneCosmo.exe

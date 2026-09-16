@@ -507,10 +507,17 @@ impl Mesh {
     }
 
     pub fn describe(&self) -> String {
-        let head = match self.boundary {
+        let mut head = match self.boundary {
             Boundary::Isolated => format!("mesh {}³→{}³", self.grid, 2 * self.grid),
             Boundary::Periodic => format!("mesh {}³ periodyczny", self.grid),
         };
+        if crate::gpu::available() && self.padded().is_power_of_two() {
+            let gpu = crate::gpu::label();
+            if !gpu.is_empty() {
+                head.push_str(" · ");
+                head.push_str(gpu);
+            }
+        }
         match (self.box_, self.last_softening) {
             (Some(b), Some(eps)) => {
                 let mut out = format!("{head}, oczko {:.3}", b.h);
