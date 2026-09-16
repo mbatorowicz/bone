@@ -316,6 +316,7 @@ Wykonaj krok 15 z docs/kurs-otw-kroki.md. README + landing, pełne testy i clipp
 
 Rdzeń (kroki 1–15) jest na mapie. Fala 2: tensory → równania Einsteina → PINN.
 Fala 3: animacje ten/ein/pinn. Fala 4: Kerr i siatka PDE (kroki 26–36).
+Fala 5: PINN na metryce i kafelki (kroki 37–44).
 
 ## Krok 16 — Powłoka: tensory, Einstein, PINN
 
@@ -475,7 +476,7 @@ Wykonaj krok 25 z docs/kurs-otw-kroki.md. Animacje PINN, podpis mapy, testy i cl
 
 ---
 
-Fala 3 (kroki 23–25) jest na mapie. Fala 4: Kerr → siatka PDE. Zderzenia, CUDA i PINN na `g_μν` zostają później.
+Fala 3 (kroki 23–25) jest na mapie. Fala 4: Kerr → siatka PDE. Fala 5: PINN na `A(r)` i kafelki (kroki 37–44). Zderzenia i crate’y CUDA/MPI zostają później.
 
 ## Krok 26 — Powłoka: Kerr, siatka PDE
 
@@ -663,4 +664,144 @@ Wykonaj krok 35 z docs/kurs-otw-kroki.md. Animacje lekcji siatka PDE 1–4. Licz
 Wykonaj krok 36 z docs/kurs-otw-kroki.md. Podpisy mapy i README, pełne testy i clippy, commit i push. Bez zderzeń i bez CUDA.
 ```
 
-Zderzenia czarnych dziur, CUDA/MPI i PINN na `g_μν` zostają później.
+---
+
+Fala 4 (kroki 26–36) jest na mapie. Fala 5: PINN na metryce → kafelki. Zderzenia, BSSN i crate’y CUDA/MPI zostają później.
+
+## Krok 37 — Powłoka: PINN na metryce, kafelki
+
+**Cel:** Na mapie widać dwie kolejne ścieżki. Wejście w STW / geo / BH / ten / ein / pinn / kerr / pde i laboratoria działa jak dziś.
+
+**Zależności:** krok 36.
+
+**Start:** `cosmo/ui/src/screen.rs`, `cosmo/ui/src/lesson.rs`, katalog `cosmo/lessons/`.
+
+**Zrób:** `Track::{Gpin, Par}` jako `Track::WAVE5`. Slugi `gpin` / `par`. Stuby: `gpin/01`–`04`, `par/01`–`04`. Mapa: sekcja „Linijka i magazyn”. Lekcja — istniejący 60/40 i placeholder-animacja. Ostatnia lekcja obu ścieżek wraca na mapę, bez labu. Bez `gr::gpin`, bez `gr::par`.
+
+**Gotowe gdy:** `cargo test --workspace` zielone; z mapy da się otworzyć każdą nową lekcję i wrócić; Kerr i PDE nietknięte.
+
+**Prompt:**
+
+```
+Wykonaj krok 37 z docs/kurs-otw-kroki.md. Powłoka dwóch ścieżek: PINN na metryce i kafelki. Stuby i placeholder. Bez gr::gpin, bez gr::par, bez CUDA.
+```
+
+## Krok 38 — Teksty PINN na metryce dla laika
+
+**Cel:** Ścieżka `gpin` kompletna tekstowo.
+
+**Zależności:** krok 37.
+
+**Pliki:** `cosmo/lessons/gpin/*.md`.
+
+**Zrób:** lekcje 1–4: dziesięć kratek, kulista próżnia zostawia `A(r)`; residual Einsteina `r A' + A − 1` zamiast ciepła; półka sędzią (`1 − 2M/r`, Kretschmann, `G = 0`); stacjonarna próżnia tak, zderzenia nie. Laik, analogia → obraz → wzór → kod. Bez `gr::gpin`, bez nowych animacji, bez 10 wyjść sieci.
+
+**Prompt:**
+
+```
+Wykonaj krok 38 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki PINN na metryce. Bez silnika i bez nowych animacji.
+```
+
+## Krok 39 — `gr::gpin`
+
+**Cel:** Ansatz kulistej próżni i mała sieć w `bone-core`, testowana, bez UI.
+
+**Zależności:** krok 22 (spadek jak w `gr::pinn`); krok 7 (`M` jak w Schwarzschildu).
+
+**Pliki:** `cosmo/core/src/gr/gpin.rs`; `pub mod gpin` w `gr/mod.rs`.
+
+**Zrób:** ansatz `ds² = −A(r) dt² + A(r)⁻¹ dr² + r² dΩ²`. Sieć `1→8→1` zgaduje `A(r)`. Residual `r A' + A − 1`. `M` dane, kolokacja `r > 2M`. Test: analityczne `A = 1 − 2M/r` ma residual ≈ 0; po kroku spadku błąd wobec półki spada. Nie ruszać `pinn.rs` (ciepło/fala). Nie uogólniać `einstein.rs` na dowolne `g`. Bez UI, bez CUDA, bez zderzeń.
+
+**Prompt:**
+
+```
+Wykonaj krok 39 z docs/kurs-otw-kroki.md. Tylko gr::gpin z testami. Bez UI, bez CUDA, bez ruszania pinn.rs i einstein.rs.
+```
+
+## Krok 40 — Animacje PINN na metryce
+
+**Cel:** Ścieżka `gpin` ma ruchomy obraz; liczby z `gr::gpin`.
+
+**Zależności:** kroki 38 i 39.
+
+**Pliki:** `cosmo/ui/src/viz/gpin.rs`; podpięcie w `viz/mod.rs`; `cosmo/lessons/gpin/*.md` (akapit „Co widać”).
+
+**Zrób:** lekcje 1–4. `A(r)` vs półka `1 − 2M/r`; termometr residualu; suwak `M`; lekcja 4: stacjonarna próżnia vs zderzenia (strzałka przekreślona). Play/pauza. Bez labu. Bez kafelków na ekranie.
+
+**Gotowe gdy:** residual analitycznego `A` ≈ 0 na belce; suwak `M` kręci półką.
+
+**Prompt:**
+
+```
+Wykonaj krok 40 z docs/kurs-otw-kroki.md. Animacje lekcji PINN na metryce 1–4. Liczby z gr::gpin. Bez kafelków i bez labu.
+```
+
+## Krok 41 — Teksty kafelki dla laika
+
+**Cel:** Ścieżka `par` kompletna tekstowo.
+
+**Zależności:** krok 37.
+
+**Pliki:** `cosmo/lessons/par/*.md`.
+
+**Zrób:** lekcje 1–4: magazyn nie mieści się w jednej głowie (pociąć drut); halo (sąsiad za szwem, MPI słowami); wielu kucharzy, ten sam przepis (`rayon` / CUDA słowami); Einstein 10 kratek × N³, dwie studnie niszczą stacjonarność. Laik, analogia → obraz → wzór → kod. CUDA i MPI jako nazwy kafelka, nie jako crate. Bez `gr::par`, bez cudarc/mpi, bez zderzeń w silniku. Ostatnia lekcja wraca na mapę.
+
+**Prompt:**
+
+```
+Wykonaj krok 41 z docs/kurs-otw-kroki.md. Tylko pełne teksty Markdown ścieżki kafelki. Bez silnika i bez nowych animacji.
+```
+
+## Krok 42 — `gr::par`
+
+**Cel:** Kafelki i halo na `gr::fd`, testowane, bez UI.
+
+**Zależności:** krok 34 (`gr::fd`).
+
+**Pliki:** `cosmo/core/src/gr/par.rs`; `pub mod par` w `gr/mod.rs`.
+
+**Zrób:** podział siatki 1D na kafelki, węzły-duchy, wymiana halo, krok FTCS na kafelku. Test: dwa kafelki = jeden serialny krok `gr::fd`. Nie ruszać `cosmo/core/src/grid.rs` (CIC N-ciał). Bez cudarc, bez mpi, bez `g_μν` na kafelku, bez 2D.
+
+**Prompt:**
+
+```
+Wykonaj krok 42 z docs/kurs-otw-kroki.md. Tylko gr::par z testami. Bez UI, bez cudarc/mpi, bez ruszania grid.rs N-ciał.
+```
+
+## Krok 43 — Animacje kafelki
+
+**Cel:** Ścieżka `par` ma ruchomy obraz; liczby z `gr::par`.
+
+**Zależności:** kroki 41 i 42.
+
+**Pliki:** `cosmo/ui/src/viz/par.rs`; podpięcie w `viz/mod.rs`; `cosmo/lessons/par/*.md` (akapit „Co widać”).
+
+**Zrób:** lekcje 1–4. Drut pocięty na kafelki; duchy na szwie; play = krok z wymianą; lekcja 4: magazyn 10 × N³ vs dwie studnie (strzałka przekreślona). Bez labu. Bez zgadywania metryki.
+
+**Gotowe gdy:** dwa kafelki na ekranie zgadzają się z serialnym ciepłem.
+
+**Prompt:**
+
+```
+Wykonaj krok 43 z docs/kurs-otw-kroki.md. Animacje lekcji kafelki 1–4. Liczby z gr::par. Bez CUDA i bez zderzeń.
+```
+
+## Krok 44 — Mapa, README, siatka
+
+**Cel:** Mapa nie pisze stubu przy gpin/par; README nie obiecuje zderzeń.
+
+**Zależności:** kroki 37–43.
+
+**Pliki:** `cosmo/ui/src/screen.rs`; `README.md`; `cosmo/README.md`; ewentualnie `www/index.html`.
+
+**Zrób:** podpisy sekcji „Linijka i magazyn” bez stubu. `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`. Commit + push. Bez force push. Bez zderzeń, bez cudarc/mpi, bez 10 wyjść sieci.
+
+**Gotowe gdy:** testy i clippy czyste; z mapy gpin 4 i par 4 wracają na mapę.
+
+**Prompt:**
+
+```
+Wykonaj krok 44 z docs/kurs-otw-kroki.md. Podpisy mapy i README, pełne testy i clippy, commit i push. Bez zderzeń i bez CUDA.
+```
+
+Zderzenia czarnych dziur, BSSN i crate’y CUDA/MPI zostają później.

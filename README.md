@@ -28,7 +28,8 @@ z tekstem, silnikiem i animacją. Ostatnia lekcja wraca na mapę.
 - **Siatka PDE** (`pde/01`–`04`) — węzły zamiast suwaków PINN, ciepło FTCS
   i fala leapfrog w 1D. Lekcja 4 wraca na mapę. To nie jest metryka na siatce.
 
-Następna fala: CUDA/MPI i PINN na `g_μν`. Bez zderzeń czarnych dziur.
+Następna fala: PINN na metryce (`A(r)`) i kafelki (kroki 37–44).
+Bez zderzeń czarnych dziur i bez crate’ów CUDA/MPI.
 
 Moduł `gr` (Lorentz, RK4, metryka, Christoffel, geodezyjna, raytrace,
 tensor, Einstein, PINN, Kerr, siatka PDE)

@@ -14,7 +14,8 @@ metryka i geodezyjna żyją w `gr`, nie w sile chmury.
 - **Siatka PDE** (`pde/01`–`04`) — ciepło i fala 1D na węzłach, nie metryka.
   Lekcja 4 wraca na mapę.
 
-Następna fala: CUDA/MPI i PINN na `g_μν`. Bez zderzeń czarnych dziur.
+Następna fala: PINN na metryce (`A(r)`) i kafelki (kroki 37–44).
+Bez zderzeń czarnych dziur i bez crate’ów CUDA/MPI.
 
 Cztery chmury zostają:
 
